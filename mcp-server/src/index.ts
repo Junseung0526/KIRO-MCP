@@ -1,7 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { z } from 'zod';
 import { backend } from './backend.js';
@@ -148,9 +147,12 @@ async function main() {
         return;
       }
       // Stateless: build a fresh server + transport per request.
+      // sessionIdGenerator: undefined => no session tracking, so each
+      // self-contained JSON-RPC request (incl. initialize) is handled
+      // independently. This matches the per-request server instance above.
       const server = buildServer();
       const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
+        sessionIdGenerator: undefined,
       });
       res.on('close', () => {
         void transport.close();
