@@ -10,12 +10,13 @@ async function main() {
 
   await prisma.item.createMany({
     data: [
-      { name: 'First item', description: 'Seeded sample item #1' },
+      { name: 'Welcome Item', description: 'Seeded sample item #1 (getting started)' },
       { name: 'Second item', description: 'Seeded sample item #2' },
-      { name: 'Third item', description: null },
+      { name: 'Search me', description: 'Contains the keyword search for testing search_items' },
+      { name: 'No description item', description: null },
     ],
   });
-  console.log('[seed] inserted 3 sample items');
+  console.log('[seed] inserted sample items');
 }
 
 main()

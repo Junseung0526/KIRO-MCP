@@ -1,36 +1,28 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { prisma } from './prisma';
-import { itemsRouter } from './items';
+import { errorHandler } from './errors';
+import { healthRouter } from './routes/health.routes';
+import { itemRouter } from './routes/item.routes';
 
 export function createApp() {
   const app = express();
 
   app.use(express.json());
 
-  // Minimal permissive CORS so the browser frontend (different origin/port)
-  // can call the API. Kept dependency-free on purpose.
+  // Minimal dependency-free CORS so the browser frontend (different origin/port)
+  // can call the API.
   app.use((req: Request, res: Response, next: NextFunction) => {
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') {
-      return res.sendStatus(204);
+      res.sendStatus(204);
+      return;
     }
     next();
   });
 
-  // Liveness + DB readiness. Used by the Docker healthcheck.
-  app.get('/health', async (_req: Request, res: Response) => {
-    try {
-      // Verifies the DB connection is actually usable.
-      await prisma.$queryRaw`SELECT 1`;
-      res.status(200).json({ status: 'ok', database: 'up' });
-    } catch {
-      res.status(503).json({ status: 'error', database: 'down' });
-    }
-  });
-
-  app.use('/api/items', itemsRouter);
+  app.use('/health', healthRouter);
+  app.use('/api/items', itemRouter);
 
   // 404 fallback
   app.use((_req: Request, res: Response) => {
@@ -38,11 +30,7 @@ export function createApp() {
   });
 
   // Central error handler (never leak internals / secrets)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    console.error('[error]', err instanceof Error ? err.message : 'unknown error');
-    res.status(500).json({ error: 'internal server error' });
-  });
+  app.use(errorHandler);
 
   return app;
 }

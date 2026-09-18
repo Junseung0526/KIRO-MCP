@@ -8,3 +8,6 @@ CREATE TABLE "items" (
 
     CONSTRAINT "items_pkey" PRIMARY KEY ("id")
 );
+
+-- CreateIndex
+CREATE INDEX "items_name_idx" ON "items"("name");

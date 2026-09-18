@@ -1,7 +1,8 @@
 import { createApp } from './app';
 import { prisma } from './prisma';
+import { config } from './config';
 
-const PORT = Number(process.env.BACKEND_PORT ?? process.env.PORT ?? 3000);
+const PORT = config.port;
 
 async function main() {
   const app = createApp();
