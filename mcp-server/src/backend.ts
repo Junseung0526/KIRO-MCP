@@ -1,6 +1,9 @@
 // Thin HTTP client for the KIRO-MCP backend REST API.
 // Uses the compose service name (http://backend:3000) by default so the MCP
 // server talks to the backend over the internal Docker network.
+//
+// SECURITY: This client ONLY calls the fixed set of backend REST endpoints.
+// It performs no arbitrary URL requests, no shell, no SQL, no file access.
 
 const BACKEND_URL = process.env.BACKEND_URL ?? 'http://backend:3000';
 
@@ -8,8 +11,15 @@ export interface Item {
   id: number;
   name: string;
   description: string | null;
-  created_at?: string;
-  updated_at?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Statistics {
+  totalItems: number;
+  itemsWithDescription: number;
+  itemsWithoutDescription: number;
+  latestItem: Item | null;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -29,19 +39,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const backend = {
   base: BACKEND_URL,
-  health: () => request<{ status: string; database: string }>('/health'),
+
   listItems: () => request<Item[]>('/api/items'),
+
   getItem: (id: number) => request<Item>(`/api/items/${id}`),
+
+  searchItems: (q: string) =>
+    request<Item[]>(`/api/items/search?q=${encodeURIComponent(q)}`),
+
+  statistics: () => request<Statistics>('/api/items/statistics'),
+
   createItem: (name: string, description?: string | null) =>
     request<Item>('/api/items', {
       method: 'POST',
       body: JSON.stringify({ name, description: description ?? null }),
     }),
+
   updateItem: (id: number, data: { name?: string; description?: string | null }) =>
     request<Item>(`/api/items/${id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  deleteItem: (id: number) =>
-    request<void>(`/api/items/${id}`, { method: 'DELETE' }),
+
+  deleteItem: (id: number) => request<void>(`/api/items/${id}`, { method: 'DELETE' }),
 };
