@@ -1,8 +1,8 @@
 // API client for the KIRO-MCP backend REST API.
 // API base URL is injected at build time via VITE_API_BASE_URL.
-// The browser runs on the host, so this points at the host-mapped backend port
-// (e.g. http://localhost:3000), NOT the internal compose service name.
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
+// Default is empty string => same-origin relative requests (e.g. "/api/items"),
+// which nginx reverse-proxies to the backend. This keeps everything on one port.
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
 export interface Item {
   id: number;

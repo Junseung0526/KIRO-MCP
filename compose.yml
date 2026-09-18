@@ -49,8 +49,12 @@ services:
     depends_on:
       database:
         condition: service_healthy
-    ports:
-      - "${BACKEND_PORT:-3000}:3000"
+    # Backend is reached through the frontend nginx reverse-proxy (single origin).
+    # Not published to the host by default. Uncomment to expose for direct debugging.
+    # ports:
+    #   - "${BACKEND_PORT:-3001}:3000"
+    expose:
+      - "3000"
     networks:
       - kiro-net
     healthcheck:
@@ -84,14 +88,17 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Browser talks to the backend via the host-mapped port.
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000}
+        # Same-origin: the browser calls "/api/..." and nginx proxies to backend.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
+    # The host nginx (443, with the gri22ly.me TLS cert) reverse-proxies to
+    # 127.0.0.1:3000. Bind only to loopback so the app is reachable ONLY through
+    # the host nginx / HTTPS, never directly from the public internet on :3000.
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
     networks:
       - kiro-net
 

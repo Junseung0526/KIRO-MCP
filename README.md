@@ -128,12 +128,35 @@ docker compose ps
 
 Ports (base compose):
 
-| Service    | Container | Host        |
-|------------|-----------|-------------|
-| backend    | 3000      | `3000`      |
-| mcp-server | 3100      | `3100`      |
-| frontend   | 80        | `8080`      |
-| database   | 5432      | *(not exposed)* |
+| Service    | Container | Host                         |
+|------------|-----------|------------------------------|
+| frontend   | 80        | `127.0.0.1:3000` (loopback)  |
+| backend    | 3000      | *(not exposed — internal)*   |
+| mcp-server | 3100      | `3100`                       |
+| database   | 5432      | *(not exposed)*              |
+
+### Public access (production: https://gri22ly.me)
+
+The whole app is served from a single origin. A **host nginx** terminates TLS
+for `gri22ly.me` (Let's Encrypt) and reverse-proxies to the frontend container
+on `127.0.0.1:3000`. The frontend nginx then serves the React UI and proxies
+`/api/*` and `/health` to the backend over the internal network.
+
+```
+https://gri22ly.me
+   │  (host nginx :443, TLS; :80 → 301 → :443)
+   ▼
+127.0.0.1:3000  ─ frontend container (nginx)
+   ├── /            → React SPA
+   ├── /api/*       → backend:3000
+   └── /health      → backend:3000
+```
+
+- HTTP → HTTPS redirect is handled by the host nginx.
+- The backend (`:3000` in-container) and PostgreSQL (`:5432`) are **not** exposed
+  to the public internet; the frontend port binds to loopback only.
+- The browser uses **relative** API paths (`/api/...`), so no CORS and no
+  hardcoded host/IP. Set `VITE_API_BASE_URL` empty for same-origin.
 
 Dev mode (hot reload + DB exposed on host):
 
