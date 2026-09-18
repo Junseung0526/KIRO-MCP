@@ -7,6 +7,8 @@
 # ---- Stage 1: dependencies (all deps, incl. dev, for building) ----
 FROM node:20-alpine AS deps
 WORKDIR /app
+# Prisma engines need OpenSSL (libssl.so.3) present at generate/runtime on Alpine.
+RUN apk add --no-cache openssl
 COPY package.json package-lock.json* ./
 # Full install (dev deps needed for tsc/prisma generate)
 RUN npm install
@@ -14,6 +16,7 @@ RUN npm install
 # ---- Stage 2: build (compile TS, generate Prisma client) ----
 FROM node:20-alpine AS build
 WORKDIR /app
+RUN apk add --no-cache openssl
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json* ./
 COPY tsconfig.json ./
@@ -25,6 +28,7 @@ RUN npm run build
 # ---- Stage 3: production dependencies only ----
 FROM node:20-alpine AS prod-deps
 WORKDIR /app
+RUN apk add --no-cache openssl
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
 # Prisma client must be generated for the production node_modules too
@@ -36,7 +40,8 @@ FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-# wget is used by the healthcheck; present in alpine base already.
+# OpenSSL required by Prisma engines; wget (in base alpine) used by healthcheck.
+RUN apk add --no-cache openssl
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY prisma ./prisma

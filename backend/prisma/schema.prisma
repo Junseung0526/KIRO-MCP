@@ -2,7 +2,10 @@
 // Datasource: PostgreSQL 16 (reached via compose service name `database`)
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // Alpine (musl) + OpenSSL 3.x runtime target so the query/schema engines
+  // load correctly inside the node:20-alpine containers.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
