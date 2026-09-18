@@ -1,0 +1,51 @@
+# ==============================================================================
+# KIRO-MCP — production overrides
+# Uses minimal runtime images (default build targets), production deps only,
+# no source bind-mounts, and hardened restart/logging.
+# Usage:
+#   docker compose -f compose.yml -f compose.prod.yml up -d --build
+# ==============================================================================
+
+services:
+  database:
+    restart: always
+    # No host port: database is never exposed to the host in production.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    restart: always
+    environment:
+      NODE_ENV: production
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mcp-server:
+    restart: always
+    environment:
+      MCP_TRANSPORT: ${MCP_TRANSPORT:-http}
+      MCP_HTTP_PORT: "3100"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend:
+    restart: always
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -1,0 +1,55 @@
+# ==============================================================================
+# KIRO-MCP — development overrides
+# Adds: source bind-mounts + hot reload, dev dependencies, DB host port.
+# Usage:
+#   docker compose -f compose.yml -f compose.dev.yml up -d --build
+# ==============================================================================
+
+services:
+  database:
+    # Expose the DB to the host for local debugging ONLY in dev.
+    ports:
+      - "${HOST_DB_PORT:-5432}:5432"
+
+  backend:
+    build:
+      context: ./backend
+      target: build # includes dev dependencies + ts sources
+    environment:
+      NODE_ENV: development
+    # Override the production entrypoint with a hot-reloading dev command.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        npx prisma migrate deploy &&
+        (npm run seed:dev || true) &&
+        npm run dev
+    volumes:
+      # Bind-mount source for hot reload; keep container node_modules.
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+
+  mcp-server:
+    build:
+      context: ./mcp-server
+      target: build
+    environment:
+      BACKEND_URL: http://backend:3000
+      MCP_TRANSPORT: ${MCP_TRANSPORT:-http}
+      MCP_HTTP_PORT: "3100"
+    command: ["npm", "run", "dev"]
+    volumes:
+      - ./mcp-server/src:/app/src
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    # Vite dev server runs on 5173 in dev.
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000}
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html

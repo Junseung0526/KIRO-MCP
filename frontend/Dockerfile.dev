@@ -1,0 +1,12 @@
+# syntax=docker/dockerfile:1
+# ==============================================================================
+# KIRO-MCP Frontend — development image (Vite dev server + hot reload)
+# Source is bind-mounted via compose.dev.yml; node_modules stays in the image.
+# ==============================================================================
+FROM node:20-alpine
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm install
+COPY . .
+EXPOSE 5173
+CMD ["npm", "run", "dev"]

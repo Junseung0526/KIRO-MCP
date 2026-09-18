@@ -1,0 +1,104 @@
+# ==============================================================================
+# KIRO-MCP — base compose file
+# Services: database (PostgreSQL 16), backend (Express/TS/Prisma),
+#           mcp-server (standard MCP), frontend (React/Vite via nginx).
+#
+# Networking: all services share the internal `kiro-net` bridge network.
+#   - backend  -> database (service name `database`, port 5432)
+#   - mcp      -> backend  (http://backend:3000)
+#   - frontend/browser -> backend host-mapped port
+# The database port is NOT published to the host by default.
+#
+# Usage:
+#   docker compose up -d --build          # base (prod-like)
+#   docker compose -f compose.yml -f compose.dev.yml up -d --build   # dev
+#   docker compose -f compose.yml -f compose.prod.yml up -d --build  # prod
+# ==============================================================================
+
+services:
+  database:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kiro}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kiro_password}
+      POSTGRES_DB: ${POSTGRES_DB:-kiro_mcp}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` confirms the server is actually accepting connections.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kiro} -d ${POSTGRES_DB:-kiro_mcp}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - kiro-net
+    # NOTE: no `ports:` here — the DB is not exposed to the host in the base file.
+    # Host exposure for local debugging is opt-in via compose.dev.yml.
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      BACKEND_PORT: "3000"
+      # Connect to Postgres via the compose service name `database` (NOT localhost).
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kiro}:${POSTGRES_PASSWORD:-kiro_password}@database:5432/${POSTGRES_DB:-kiro_mcp}?schema=public
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    networks:
+      - kiro-net
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  mcp-server:
+    build:
+      context: ./mcp-server
+    restart: unless-stopped
+    environment:
+      # MCP server reaches the backend over the internal network by service name.
+      BACKEND_URL: http://backend:3000
+      # Default to HTTP transport so the container stays alive and is reachable
+      # by remote MCP clients. stdio is available by overriding MCP_TRANSPORT.
+      MCP_TRANSPORT: ${MCP_TRANSPORT:-http}
+      MCP_HTTP_PORT: "3100"
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${MCP_HTTP_PORT:-3100}:3100"
+    networks:
+      - kiro-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Browser talks to the backend via the host-mapped port.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    networks:
+      - kiro-net
+
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  kiro-net:
+    driver: bridge
