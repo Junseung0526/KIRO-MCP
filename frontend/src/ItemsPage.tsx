@@ -1,178 +1,160 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { api, Item } from './api';
-import { styles } from './styles';
+import { Button, Card, EmptyState, ErrorState, Field, Input, Modal, PageHeader, Skeleton, Textarea } from './components/ui';
+import { useToast } from './components/Toast';
+import type { PageKey } from './components/AppShell';
 
-type Mode =
-  | { kind: 'none' }
-  | { kind: 'create' }
-  | { kind: 'edit'; item: Item }
-  | { kind: 'detail'; id: number };
+type Sort = 'recent' | 'name';
+type Modal_ = null | { kind: 'create' } | { kind: 'edit'; item: Item } | { kind: 'confirm'; item: Item };
 
-// `reloadSignal` lets a parent (e.g. Chat) force a refresh after DB changes.
-export function ItemsPage({ reloadSignal }: { reloadSignal?: number }) {
+export function ItemsPage({ reloadSignal, onNavigate }: { reloadSignal?: number; onNavigate: (p: PageKey) => void }) {
+  const toast = useToast();
   const [items, setItems] = useState<Item[]>([]);
   const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [sort, setSort] = useState<Sort>('recent');
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<Mode>({ kind: 'none' });
+  const [modal, setModal] = useState<Modal_>(null);
+  const debounceRef = useRef<number | undefined>(undefined);
 
-  const load = useCallback(async (q?: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      setItems(q && q.trim() ? await api.searchItems(q.trim()) : await api.listItems());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '불러오기 실패');
-    } finally {
-      setLoading(false);
-    }
+  const load = useCallback(async (q: string) => {
+    setLoading(true); setError(null);
+    try { setItems(q.trim() ? await api.searchItems(q.trim()) : await api.listItems()); }
+    catch (e) { setError(e instanceof Error ? e.message : '불러오기 실패'); }
+    finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { void load(query); /* eslint-disable-next-line */ }, [load, reloadSignal]);
+  useEffect(() => { void load(query); /* initial + reloadSignal */ // eslint-disable-next-line
+  }, [load, reloadSignal]);
 
-  async function onDelete(id: number) {
-    if (!window.confirm(`#${id} 아이템을 삭제할까요?`)) return;
+  // Debounced search as the user types.
+  function onQueryChange(v: string) {
+    setQuery(v);
+    window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(() => void load(v), 350);
+  }
+
+  const sorted = [...items].sort((a, b) =>
+    sort === 'name' ? a.name.localeCompare(b.name) : b.id - a.id);
+
+  async function onDelete(item: Item) {
     try {
-      await api.deleteItem(id);
+      await api.deleteItem(item.id);
+      toast.success(`"${item.name}" 삭제됨`);
+      setModal(null);
       await load(query);
-      setMode({ kind: 'none' });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '삭제 실패');
-    }
+    } catch { toast.error('삭제에 실패했습니다.'); }
   }
 
   return (
-    <div>
-      <h1 style={styles.h1}>Items</h1>
-      <p style={styles.sub}>PostgreSQL에 저장된 실제 아이템입니다.</p>
+    <>
+      <PageHeader title="Items" subtitle="PostgreSQL에 저장된 실제 아이템"
+        actions={<Button variant="primary" onClick={() => setModal({ kind: 'create' })}>+ 새 아이템</Button>} />
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <form onSubmit={(e) => { e.preventDefault(); void load(query); }} style={{ display: 'flex', gap: 8, flex: 1 }}>
-          <input style={styles.input} placeholder="이름/설명으로 검색…" value={query} onChange={(e) => setQuery(e.target.value)} />
-          <button style={styles.btn} type="submit">검색</button>
-          {query && <button type="button" style={styles.btnGhost} onClick={() => { setQuery(''); void load(''); }}>초기화</button>}
-        </form>
-        <button style={styles.btnPrimary} onClick={() => setMode({ kind: 'create' })}>+ 새 아이템</button>
+      <div className="toolbar">
+        <div className="grow">
+          <Input placeholder="아이템 검색..." value={query} onChange={(e) => onQueryChange(e.target.value)} aria-label="아이템 검색" />
+        </div>
+        <label className="row" style={{ gap: 6 }}>
+          <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>정렬</span>
+          <select className="input" style={{ width: 'auto' }} value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="정렬 기준">
+            <option value="recent">최신순</option>
+            <option value="name">이름순</option>
+          </select>
+        </label>
       </div>
 
-      {error && <div style={styles.error}>오류: {error}</div>}
+      <Card pad={false}>
+        {loading ? (
+          <div style={{ padding: 'var(--sp-4)' }} className="stack">
+            {[0, 1, 2, 3].map((i) => <Skeleton key={i} h={40} />)}
+          </div>
+        ) : error ? (
+          <ErrorState message="잠시 후 다시 시도해주세요." onRetry={() => void load(query)} />
+        ) : sorted.length === 0 ? (
+          <EmptyState icon={query ? '🔍' : '📭'}
+            title={query ? '검색 결과가 없습니다.' : '아직 아이템이 없습니다.'}
+            desc={query ? '다른 검색어로 다시 시도해보세요.' : 'AI에게 요청하거나 직접 만들 수 있어요.'}
+            actions={query
+              ? <Button onClick={() => onQueryChange('')}>검색 초기화</Button>
+              : <>
+                  <Button variant="primary" onClick={() => setModal({ kind: 'create' })}>아이템 만들기</Button>
+                  <Button onClick={() => onNavigate('chat')}>AI에게 요청하기</Button>
+                </>} />
+        ) : (
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {sorted.map((it) => (
+              <li key={it.id} className="listrow">
+                <div className="grow">
+                  <div className="listrow__title">#{it.id} {it.name}</div>
+                  {it.description && <div className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{it.description}</div>}
+                  <div className="listrow__meta">수정 {new Date(it.updatedAt).toLocaleString()}</div>
+                </div>
+                <div className="listrow__actions">
+                  <Button size="sm" onClick={() => setModal({ kind: 'edit', item: it })}>수정</Button>
+                  <Button size="sm" variant="danger" onClick={() => setModal({ kind: 'confirm', item: it })}>삭제</Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
-      {loading ? (
-        <div style={styles.muted}>불러오는 중…</div>
-      ) : items.length === 0 ? (
-        <div style={styles.empty}>{query ? `"${query}" 검색 결과가 없습니다.` : '아이템이 없습니다. 새로 만들어보세요.'}</div>
-      ) : (
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {items.map((item) => (
-            <li key={item.id} style={{ ...styles.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <div style={{ cursor: 'pointer' }} onClick={() => setMode({ kind: 'detail', id: item.id })}>
-                <strong>#{item.id} {item.name}</strong>
-                {item.description && <div style={{ color: '#6b7280', fontSize: 14, marginTop: 4 }}>{item.description}</div>}
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button style={styles.btnGhost} onClick={() => setMode({ kind: 'edit', item })}>수정</button>
-                <button style={styles.btnDanger} onClick={() => void onDelete(item.id)}>삭제</button>
-              </div>
-            </li>
-          ))}
-        </ul>
+      {modal?.kind === 'create' && (
+        <ItemForm title="아이템 생성" onClose={() => setModal(null)}
+          onSubmit={async (name, desc) => { await api.createItem(name, desc); toast.success('아이템이 추가되었습니다.'); setModal(null); await load(query); }} />
       )}
-
-      {mode.kind === 'create' && (
-        <ItemForm title="아이템 생성" onClose={() => setMode({ kind: 'none' })}
-          onSubmit={async (name, description) => { await api.createItem(name, description); await load(query); setMode({ kind: 'none' }); }} />
+      {modal?.kind === 'edit' && (
+        <ItemForm title={`아이템 #${modal.item.id} 수정`} initialName={modal.item.name} initialDesc={modal.item.description ?? ''}
+          onClose={() => setModal(null)}
+          onSubmit={async (name, desc) => { await api.updateItem(modal.item.id, { name, description: desc }); toast.success('변경사항을 저장했습니다.'); setModal(null); await load(query); }} />
       )}
-      {mode.kind === 'edit' && (
-        <ItemForm title={`아이템 #${mode.item.id} 수정`} initialName={mode.item.name} initialDescription={mode.item.description ?? ''}
-          onClose={() => setMode({ kind: 'none' })}
-          onSubmit={async (name, description) => { await api.updateItem(mode.item.id, { name, description }); await load(query); setMode({ kind: 'none' }); }} />
+      {modal?.kind === 'confirm' && (
+        <Modal title="아이템 삭제" onClose={() => setModal(null)}>
+          <p style={{ marginBottom: 'var(--sp-5)' }}>정말 <strong>#{modal.item.id} {modal.item.name}</strong> 을(를) 삭제할까요? 되돌릴 수 없습니다.</p>
+          <div className="row between">
+            <Button variant="ghost" onClick={() => setModal(null)}>취소</Button>
+            <Button variant="danger" onClick={() => void onDelete(modal.item)}>삭제</Button>
+          </div>
+        </Modal>
       )}
-      {mode.kind === 'detail' && (
-        <ItemDetail id={mode.id} onClose={() => setMode({ kind: 'none' })}
-          onEdit={(item) => setMode({ kind: 'edit', item })} onDelete={onDelete} />
-      )}
-    </div>
+    </>
   );
 }
 
-function ItemForm(props: {
-  title: string; initialName?: string; initialDescription?: string;
-  onClose: () => void; onSubmit: (name: string, description: string | null) => Promise<void>;
+function ItemForm({ title, initialName = '', initialDesc = '', onClose, onSubmit }: {
+  title: string; initialName?: string; initialDesc?: string; onClose: () => void;
+  onSubmit: (name: string, desc: string | null) => Promise<void>;
 }) {
-  const [name, setName] = useState(props.initialName ?? '');
-  const [description, setDescription] = useState(props.initialDescription ?? '');
+  const toast = useToast();
+  const [name, setName] = useState(initialName);
+  const [desc, setDesc] = useState(initialDesc);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return setError('이름은 필수입니다.');
-    setSaving(true); setError(null);
-    try {
-      await props.onSubmit(name.trim(), description.trim() ? description.trim() : null);
-    } catch (err) { setError(err instanceof Error ? err.message : '저장 실패'); setSaving(false); }
+    if (!name.trim()) return setErr('이름은 필수입니다.');
+    setSaving(true); setErr(null);
+    try { await onSubmit(name.trim(), desc.trim() || null); }
+    catch { setErr('저장에 실패했습니다.'); toast.error('저장에 실패했습니다.'); setSaving(false); }
   }
 
   return (
-    <Modal title={props.title} onClose={props.onClose}>
+    <Modal title={title} onClose={onClose}>
       <form onSubmit={submit}>
-        <label style={styles.label}>이름<input style={styles.input} value={name} onChange={(e) => setName(e.target.value)} autoFocus /></label>
-        <label style={styles.label}>설명<textarea style={{ ...styles.input, minHeight: 80 }} value={description} onChange={(e) => setDescription(e.target.value)} /></label>
-        {error && <div style={styles.error}>{error}</div>}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button type="button" style={styles.btnGhost} onClick={props.onClose}>취소</button>
-          <button type="submit" style={styles.btnPrimary} disabled={saving}>{saving ? '저장 중…' : '저장'}</button>
+        <Field label="이름" htmlFor="it-name">
+          <Input id="it-name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        </Field>
+        <Field label="설명 (선택)" htmlFor="it-desc">
+          <Textarea id="it-desc" rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
+        </Field>
+        {err && <div className="badge badge--danger" role="alert" style={{ display: 'block', marginBottom: 'var(--sp-3)' }}>{err}</div>}
+        <div className="row between">
+          <Button variant="ghost" type="button" onClick={onClose}>취소</Button>
+          <Button variant="primary" type="submit" loading={saving}>저장</Button>
         </div>
       </form>
     </Modal>
-  );
-}
-
-function ItemDetail(props: { id: number; onClose: () => void; onEdit: (i: Item) => void; onDelete: (id: number) => void }) {
-  const [item, setItem] = useState<Item | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true; setLoading(true);
-    api.getItem(props.id)
-      .then((i) => alive && setItem(i))
-      .catch((e) => alive && setError(e instanceof Error ? e.message : '불러오기 실패'))
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [props.id]);
-
-  return (
-    <Modal title={`아이템 #${props.id}`} onClose={props.onClose}>
-      {loading ? <div style={styles.muted}>불러오는 중…</div>
-        : error ? <div style={styles.error}>{error}</div>
-        : item ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div><strong>이름:</strong> {item.name}</div>
-            <div><strong>설명:</strong> {item.description ?? <em style={styles.muted}>없음</em>}</div>
-            <div style={styles.muted}>생성: {new Date(item.createdAt).toLocaleString()}</div>
-            <div style={styles.muted}>수정: {new Date(item.updatedAt).toLocaleString()}</div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-              <button style={styles.btnGhost} onClick={() => props.onEdit(item)}>수정</button>
-              <button style={styles.btnDanger} onClick={() => props.onDelete(item.id)}>삭제</button>
-            </div>
-          </div>
-        ) : null}
-    </Modal>
-  );
-}
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
-      <div style={{ background: '#fff', borderRadius: 12, padding: 20, width: '100%', maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>{title}</h2>
-          <button style={styles.btnGhost} onClick={onClose}>✕</button>
-        </div>
-        {children}
-      </div>
-    </div>
   );
 }

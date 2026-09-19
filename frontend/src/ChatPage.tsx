@@ -1,99 +1,129 @@
 import { KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { api } from './api';
-import { styles } from './styles';
+import { Button, EmptyState, StatusIndicator } from './components/ui';
+import { useToast } from './components/Toast';
+import type { PageKey } from './components/AppShell';
 
 interface Msg { role: 'user' | 'ai'; text: string }
 
-// Chat forwards natural language to the backend, which runs Kiro CLI with the
-// locked-down kiro_mcp agent (7 MCP tools). Real tool results are shown.
-export function ChatPage({ onDbMaybeChanged }: { onDbMaybeChanged?: () => void }) {
+const QUICK = [
+  '아이템 목록 보여줘',
+  '현재 통계 알려줘',
+  '노션 목록 보여줘',
+  '노션에서 할 일 찾아줘',
+];
+
+export function ChatPage({ onDbMaybeChanged, onNavigate }: { onDbMaybeChanged?: () => void; onNavigate: (p: PageKey) => void }) {
+  const toast = useToast();
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [step, setStep] = useState<string | null>(null);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const cancelRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => {
-    api.chatStatus().then((s) => setConfigured(s.configured)).catch(() => setConfigured(false));
-  }, []);
+  useEffect(() => { api.chatStatus().then((s) => setConfigured(s.configured)).catch(() => setConfigured(false)); }, []);
+  useEffect(() => { logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, step, sending]);
 
-  useEffect(() => {
-    logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages, sending]);
+  // Auto-grow textarea.
+  function autoGrow() {
+    const ta = taRef.current; if (!ta) return;
+    ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+  }
 
-  async function send() {
-    const text = input.trim();
-    if (!text || sending) return;
-    setError(null);
-    setMessages((m) => [...m, { role: 'user', text }]);
-    setInput('');
-    setSending(true);
-    setStatus('전송 중…');
+  async function send(text?: string) {
+    const msg = (text ?? input).trim();
+    if (!msg || sending) return;
+    setMessages((m) => [...m, { role: 'user', text: msg }]);
+    setInput(''); setSending(true); setStep('요청을 분석하는 중...');
+    if (taRef.current) taRef.current.style.height = 'auto';
     try {
-      // Use SSE streaming so the UI shows live progress during the (multi-second)
-      // Kiro run, then appends the real final reply.
-      const { promise } = api.chatStream(text, (state) => {
-        setStatus(state === 'accepted' ? '요청 수락됨…' : 'Kiro CLI 처리 중…');
+      const { promise, cancel } = api.chatStream(msg, (state) => {
+        setStep(state === 'accepted' ? '요청을 분석하는 중...' : '작업을 실행하는 중...');
       });
+      cancelRef.current = cancel;
       const res = await promise;
-      setMessages((m) => [...m, { role: 'ai', text: res.reply || '(빈 응답)' }]);
+      setMessages((m) => [...m, { role: 'ai', text: res.reply || '(응답이 비어 있습니다)' }]);
       onDbMaybeChanged?.();
     } catch (e) {
-      setError(e instanceof Error ? e.message : '전송 실패');
-    } finally {
-      setSending(false);
-      setStatus(null);
-    }
+      const emsg = e instanceof Error ? e.message : '전송 실패';
+      toast.error(emsg);
+      setMessages((m) => [...m, { role: 'ai', text: `요청을 처리하지 못했습니다. ${emsg}` }]);
+    } finally { setSending(false); setStep(null); cancelRef.current = null; }
+  }
+
+  function cancel() {
+    cancelRef.current?.();
+    setSending(false); setStep(null);
+    setMessages((m) => [...m, { role: 'ai', text: '요청을 취소했습니다.' }]);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void send();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); }
   }
 
   return (
-    <div>
-      <h1 style={styles.h1}>AI Chat</h1>
-      <p style={styles.sub}>자연어로 요청하면 Kiro CLI가 허용된 MCP 도구(7개)로 실제 DB 작업을 수행합니다.</p>
-
-      {configured === false && (
-        <div style={styles.error}>
-          Chat이 설정되지 않았습니다. 호스트의 Kiro 브리지(KIRO_BRIDGE_URL)가 실행 중이어야 합니다.
-        </div>
-      )}
-
-      <div style={styles.chatWrap}>
-        <div ref={logRef} style={styles.chatLog}>
-          {messages.length === 0 ? (
-            <div style={styles.empty}>
-              예: "아이템 목록 보여줘", "Spring 공부 아이템 추가해줘", "공부라는 단어가 들어간 아이템 찾아줘", "현재 통계 알려줘"
+    <>
+      <div className="chat">
+        <div className="chat__head">
+          <div>
+            <strong>AI Assistant</strong>
+            <div style={{ marginTop: 2 }}>
+              <StatusIndicator state={configured === false ? 'off' : configured ? 'on' : 'warn'}
+                label={configured === false ? '연결되지 않음' : configured ? 'Connected' : '확인 중'} />
             </div>
+          </div>
+          {messages.length > 0 && <Button size="sm" variant="ghost" onClick={() => setMessages([])}>대화 지우기</Button>}
+        </div>
+
+        <div className="chat__log" ref={logRef}>
+          {configured === false && (
+            <div className="bubble bubble--ai" role="alert">
+              AI Chat이 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.
+            </div>
+          )}
+          {messages.length === 0 && configured !== false ? (
+            <EmptyState icon="✦" title="무엇을 도와드릴까요?"
+              desc="자연어로 요청하면 아이템과 Notion을 관리해드려요."
+              actions={<div className="quick">{QUICK.map((q) => (
+                <button key={q} className="chip" onClick={() => void send(q)} disabled={sending}>{q}</button>
+              ))}</div>} />
           ) : (
             messages.map((m, i) => (
-              <div key={i} style={m.role === 'user' ? styles.bubbleUser : styles.bubbleAI}>{m.text}</div>
+              <div key={i} className={`bubble bubble--${m.role === 'user' ? 'user' : 'ai'}`}>{m.text}</div>
             ))
           )}
-          {sending && <div style={styles.bubbleAI}>{status ?? '처리 중…'} <span style={{ opacity: 0.6 }}>(Kiro CLI)</span></div>}
+          {sending && step && (
+            <div className="chat__steps" aria-live="polite">
+              <div className="chat__step"><span className="spinner" aria-hidden /> {step}</div>
+            </div>
+          )}
         </div>
-        {error && <div style={{ ...styles.error, margin: 0, borderRadius: 0 }}>오류: {error}</div>}
-        <div style={styles.chatInputRow}>
+
+        <div className="chat__input">
           <textarea
-            style={{ ...styles.input, minHeight: 44, resize: 'none' }}
-            placeholder="메시지를 입력하세요 (Enter 전송, Shift+Enter 줄바꿈)"
+            ref={taRef} className="textarea grow" rows={1}
+            placeholder="무엇을 할까요? (Enter 전송 · Shift+Enter 줄바꿈)"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => { setInput(e.target.value); autoGrow(); }}
             onKeyDown={onKeyDown}
             disabled={sending || configured === false}
+            aria-label="메시지 입력"
           />
-          <button style={styles.btnPrimary} onClick={() => void send()} disabled={sending || configured === false}>
-            {sending ? '전송 중…' : '전송'}
-          </button>
+          {sending
+            ? <Button variant="ghost" onClick={cancel}>취소</Button>
+            : <Button variant="primary" onClick={() => void send()} disabled={!input.trim() || configured === false} aria-label="전송">➤</Button>}
         </div>
       </div>
-    </div>
+
+      {messages.length > 0 && (
+        <div className="quick" style={{ marginTop: 'var(--sp-4)' }}>
+          <Button size="sm" variant="ghost" onClick={() => onNavigate('items')}>Items 보기</Button>
+          <Button size="sm" variant="ghost" onClick={() => onNavigate('notion')}>Notion 보기</Button>
+        </div>
+      )}
+    </>
   );
 }

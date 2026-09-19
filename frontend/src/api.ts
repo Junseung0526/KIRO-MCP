@@ -38,6 +38,15 @@ export interface ChatReply {
   durationMs: number;
 }
 
+export interface NotionPage {
+  id: string;
+  title: string;
+  properties: Record<string, unknown>;
+  url?: string;
+  createdTime?: string;
+  lastEditedTime?: string;
+}
+
 // Thrown so callers can detect auth loss and redirect to login.
 export class UnauthorizedError extends Error {}
 
@@ -71,6 +80,10 @@ function jsonReq(path: string, method: string, body?: unknown) {
 
 export const api = {
   base: API_BASE,
+
+  // ---- Health (public) ----
+  health: () =>
+    fetch(`${API_BASE}/health`).then((r) => handle<{ status: string; database: string }>(r)),
 
   // ---- Auth ----
   authStatus: () => req('/api/auth/status').then((r) => handle<AuthStatus>(r)),
@@ -158,4 +171,9 @@ export const api = {
     ),
   notionDisconnect: () =>
     req('/api/settings/notion', { method: 'DELETE' }).then((r) => handle<{ ok: boolean }>(r)),
+
+  // ---- Notion data (scoped to the connected database) ----
+  notionListPages: () => req('/api/notion/list').then((r) => handle<NotionPage[]>(r)),
+  notionSearchPages: (query: string) =>
+    req(`/api/notion/search?query=${encodeURIComponent(query)}`).then((r) => handle<NotionPage[]>(r)),
 };

@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, LogEntry } from './api';
-import { styles } from './styles';
+import { Badge, Button, Card, EmptyState, ErrorState, PageHeader, Skeleton } from './components/ui';
 
-const levelColor: Record<string, string> = { info: '#2563eb', warn: '#d97706', error: '#dc2626' };
+type Level = 'all' | 'info' | 'warn' | 'error';
+const toneFor = (l: string) => (l === 'error' ? 'danger' : l === 'warn' ? 'warning' : 'primary');
 
-// Logs page shows recent application logs (secrets already scrubbed server-side).
 export function LogsPage() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Level>('all');
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -16,42 +17,52 @@ export function LogsPage() {
     catch (e) { setError(e instanceof Error ? e.message : '불러오기 실패'); }
     finally { setLoading(false); }
   }, []);
-
   useEffect(() => { void load(); }, [load]);
 
-  return (
-    <div>
-      <h1 style={styles.h1}>Logs</h1>
-      <p style={styles.sub}>최근 애플리케이션 로그입니다 (비밀정보는 기록되지 않습니다).</p>
-      <button style={{ ...styles.btnGhost, marginBottom: 12 }} onClick={() => void load()}>새로고침</button>
+  const filtered = filter === 'all' ? logs : logs.filter((l) => l.level === filter);
 
-      {loading ? <div style={styles.muted}>불러오는 중…</div>
-        : error ? <div style={styles.error}>오류: {error}</div>
-        : logs.length === 0 ? <div style={styles.empty}>로그가 없습니다.</div>
-        : (
-          <div style={{ ...styles.card, padding: 0, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+  return (
+    <>
+      <PageHeader title="Logs" subtitle="애플리케이션 활동 로그 (비밀정보는 기록되지 않습니다)"
+        actions={<Button onClick={() => void load()} loading={loading}>새로고침</Button>} />
+
+      <div className="toolbar">
+        {(['all', 'info', 'warn', 'error'] as Level[]).map((lv) => (
+          <button key={lv} className="chip" onClick={() => setFilter(lv)}
+            style={filter === lv ? { borderColor: 'var(--c-primary)', color: 'var(--c-primary)', background: 'var(--c-primary-weak)' } : undefined}
+            aria-pressed={filter === lv}>
+            {lv === 'all' ? '전체' : lv}
+          </button>
+        ))}
+      </div>
+
+      <Card pad={false}>
+        {loading ? (
+          <div style={{ padding: 'var(--sp-4)' }} className="stack">{[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} h={22} />)}</div>
+        ) : error ? (
+          <ErrorState message="로그를 불러오지 못했습니다." onRetry={() => void load()} />
+        ) : filtered.length === 0 ? (
+          <EmptyState icon="🗒️" title="표시할 로그가 없습니다." />
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table">
               <thead>
-                <tr style={{ background: '#f3f4f6', textAlign: 'left' }}>
-                  <th style={{ padding: '8px 10px' }}>시간</th>
-                  <th style={{ padding: '8px 10px' }}>레벨</th>
-                  <th style={{ padding: '8px 10px' }}>이벤트</th>
-                  <th style={{ padding: '8px 10px' }}>메시지</th>
-                </tr>
+                <tr><th style={{ width: 170 }}>시간</th><th style={{ width: 80 }}>레벨</th><th>이벤트</th><th>메시지</th></tr>
               </thead>
               <tbody>
-                {logs.map((l) => (
-                  <tr key={l.id} style={{ borderTop: '1px solid #eee' }}>
-                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: '#6b7280' }}>{new Date(l.createdAt).toLocaleString()}</td>
-                    <td style={{ padding: '7px 10px', color: levelColor[l.level] ?? '#374151', fontWeight: 600 }}>{l.level}</td>
-                    <td style={{ padding: '7px 10px', fontFamily: 'monospace' }}>{l.event}</td>
-                    <td style={{ padding: '7px 10px', color: '#374151' }}>{l.message}</td>
+                {filtered.map((l) => (
+                  <tr key={l.id}>
+                    <td className="muted" style={{ whiteSpace: 'nowrap' }}>{new Date(l.createdAt).toLocaleString()}</td>
+                    <td><Badge tone={toneFor(l.level) as 'danger' | 'warning' | 'primary'}>{l.level}</Badge></td>
+                    <td><code>{l.event}</code></td>
+                    <td>{l.message}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-    </div>
+      </Card>
+    </>
   );
 }
