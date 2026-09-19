@@ -46,9 +46,20 @@ services:
       BACKEND_PORT: "3000"
       # Connect to Postgres via the compose service name `database` (NOT localhost).
       DATABASE_URL: postgresql://${POSTGRES_USER:-kiro}:${POSTGRES_PASSWORD:-kiro_password}@database:5432/${POSTGRES_DB:-kiro_mcp}?schema=public
+      # Auth session signing secret (from .env; never commit real value).
+      JWT_SECRET: ${JWT_SECRET:-}
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-43200}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      # Kiro bridge (host-side kiro-cli runner) reached via docker host-gateway.
+      KIRO_BRIDGE_URL: ${KIRO_BRIDGE_URL:-http://host.docker.internal:3200}
+      KIRO_BRIDGE_TOKEN: ${KIRO_BRIDGE_TOKEN:-}
+      CHAT_TIMEOUT_MS: ${CHAT_TIMEOUT_MS:-120000}
     depends_on:
       database:
         condition: service_healthy
+    # Allow the container to reach host-side services (the Kiro bridge).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # Backend is reached through the frontend nginx reverse-proxy (single origin).
     # Not published to the host by default. Uncomment to expose for direct debugging.
     # ports:

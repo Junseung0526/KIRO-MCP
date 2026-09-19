@@ -23,3 +23,28 @@ model Item {
   @@index([name])
   @@map("items")
 }
+
+// Single-user auth for this personal app. Exactly one row (id=1) holds the
+// bcrypt password hash. No signup; password is set on first run.
+model AppConfig {
+  id           Int      @id @default(1)
+  passwordHash String?  @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("app_config")
+}
+
+// Minimal application log (login, chat, tool calls, errors). Never stores
+// secrets (passwords, tokens, API keys) — only high-level events + metadata.
+model AppLog {
+  id            Int      @id @default(autoincrement())
+  level         String   // info | warn | error
+  event         String   // e.g. auth.login.success, chat.request, mcp.tool.call
+  message       String?
+  correlationId String?  @map("correlation_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("app_logs")
+}

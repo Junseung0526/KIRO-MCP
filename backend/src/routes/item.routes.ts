@@ -1,8 +1,12 @@
 import { Router } from 'express';
 import { itemController } from '../controllers/item.controller';
 import { asyncHandler } from '../errors';
+import { requireAuth } from '../middleware/requireAuth';
 
 export const itemRouter = Router();
+
+// All item CRUD requires an authenticated session (protects service data).
+itemRouter.use(requireAuth);
 
 // Static/specific routes MUST be registered before the dynamic ":id" route,
 // otherwise "search"/"statistics" would be captured as an id.

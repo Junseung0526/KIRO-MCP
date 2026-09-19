@@ -1,10 +1,13 @@
 import { createApp } from './app';
 import { prisma } from './prisma';
-import { config } from './config';
+import { config, assertAuthConfigured } from './config';
 
 const PORT = config.port;
 
 async function main() {
+  // Fail fast if auth secrets are missing (never run with an insecure default).
+  assertAuthConfigured();
+
   const app = createApp();
 
   const server = app.listen(PORT, () => {
