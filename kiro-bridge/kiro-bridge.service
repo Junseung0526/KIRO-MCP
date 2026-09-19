@@ -1,0 +1,27 @@
+[Unit]
+Description=KIRO-MCP Kiro Bridge (host-side kiro-cli runner)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/KIRO-MCP
+# Read secrets/config from the project .env (KIRO_BRIDGE_TOKEN, etc.)
+EnvironmentFile=/home/ubuntu/KIRO-MCP/.env
+Environment=KIRO_BRIDGE_PORT=3200
+Environment=KIRO_BRIDGE_BIND=0.0.0.0
+Environment=KIRO_AGENT=kiro_mcp
+Environment=KIRO_BIN=/home/ubuntu/.local/bin/kiro-cli
+Environment=HOME=/home/ubuntu
+Environment=PATH=/home/ubuntu/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/python3 /home/ubuntu/KIRO-MCP/kiro-bridge/server.py
+Restart=on-failure
+RestartSec=3
+# Hardening: the bridge only needs to run kiro-cli; limit its surface.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

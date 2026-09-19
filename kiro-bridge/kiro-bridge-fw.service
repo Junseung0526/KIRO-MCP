@@ -1,0 +1,14 @@
+[Unit]
+Description=KIRO-MCP: allow docker kiro-net subnet to reach host Kiro bridge (tcp/3200)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Idempotent: only add the ACCEPT rule if it isn't already present. Scoped to
+# the docker bridge subnet + the bridge port only. Does not touch other rules.
+ExecStart=/bin/sh -c '/usr/sbin/iptables -C INPUT -s 172.18.0.0/16 -p tcp --dport 3200 -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I INPUT -s 172.18.0.0/16 -p tcp --dport 3200 -j ACCEPT'
+
+[Install]
+WantedBy=multi-user.target

@@ -53,6 +53,7 @@ services:
       # Kiro bridge (host-side kiro-cli runner) reached via docker host-gateway.
       KIRO_BRIDGE_URL: ${KIRO_BRIDGE_URL:-http://host.docker.internal:3200}
       KIRO_BRIDGE_TOKEN: ${KIRO_BRIDGE_TOKEN:-}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
       CHAT_TIMEOUT_MS: ${CHAT_TIMEOUT_MS:-120000}
     depends_on:
       database:
@@ -82,15 +83,19 @@ services:
     environment:
       # MCP server reaches the backend over the internal network by service name.
       BACKEND_URL: http://backend:3000
+      # Internal token so MCP tool calls can reach the auth-protected item API.
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
       # Default to HTTP transport so the container stays alive and is reachable
-      # by remote MCP clients. stdio is available by overriding MCP_TRANSPORT.
+      # by the host-side Kiro CLI. stdio is available by overriding MCP_TRANSPORT.
       MCP_TRANSPORT: ${MCP_TRANSPORT:-http}
       MCP_HTTP_PORT: "3100"
     depends_on:
       backend:
         condition: service_healthy
+    # MCP is bound to loopback only — reachable by the host Kiro CLI, NOT exposed
+    # to the public internet (no auth on MCP transport itself).
     ports:
-      - "${MCP_HTTP_PORT:-3100}:3100"
+      - "127.0.0.1:${MCP_HTTP_PORT:-3100}:3100"
     networks:
       - kiro-net
 

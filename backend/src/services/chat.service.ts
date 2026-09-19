@@ -54,6 +54,13 @@ export const chatService = {
       };
 
       if (!res.ok || data.ok === false) {
+        // Bridge busy (single-flight) — surface a friendly, retryable message.
+        if (res.status === 429) {
+          await logger.warn('chat.bridge.busy', 'bridge busy', correlationId);
+          throw new ChatConfigError(
+            '이전 요청을 처리 중입니다. 잠시 후 다시 시도해 주세요.',
+          );
+        }
         await logger.error(
           'chat.bridge.error',
           `bridge status=${res.status} err=${data.error ?? 'unknown'}`,

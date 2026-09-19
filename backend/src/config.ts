@@ -15,6 +15,9 @@ export const config = {
   // Kiro bridge (host-side process that runs `kiro-cli`)
   kiroBridgeUrl: process.env.KIRO_BRIDGE_URL ?? '',
   kiroBridgeToken: process.env.KIRO_BRIDGE_TOKEN ?? '',
+  // Internal service token: lets the MCP server (internal network) call the
+  // protected item API on behalf of Kiro tool calls. Never exposed to browsers.
+  internalApiToken: process.env.INTERNAL_API_TOKEN ?? '',
   // Max time to wait for a chat/Kiro run (ms).
   chatTimeoutMs: Number(process.env.CHAT_TIMEOUT_MS ?? 120_000),
 } as const;

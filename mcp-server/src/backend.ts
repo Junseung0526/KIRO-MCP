@@ -6,6 +6,8 @@
 // It performs no arbitrary URL requests, no shell, no SQL, no file access.
 
 const BACKEND_URL = process.env.BACKEND_URL ?? 'http://backend:3000';
+// Internal service token so the MCP server can call the auth-protected item API.
+const INTERNAL_TOKEN = process.env.INTERNAL_API_TOKEN ?? '';
 
 export interface Item {
   id: number;
@@ -25,7 +27,11 @@ export interface Statistics {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BACKEND_URL}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(INTERNAL_TOKEN ? { 'X-Internal-Token': INTERNAL_TOKEN } : {}),
+      ...(init?.headers ?? {}),
+    },
   });
   if (!res.ok) {
     const body = await res.text();
