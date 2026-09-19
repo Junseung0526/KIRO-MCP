@@ -50,6 +50,11 @@ TRUST_TOOLS = ",".join([
     "kiro_mcp___delete_item",
     "kiro_mcp___search_items",
     "kiro_mcp___get_statistics",
+    "kiro_mcp___notion_list",
+    "kiro_mcp___notion_search",
+    "kiro_mcp___notion_get",
+    "kiro_mcp___notion_create",
+    "kiro_mcp___notion_update",
 ])
 
 _SECRET_RES = [

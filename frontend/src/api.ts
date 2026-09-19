@@ -142,4 +142,20 @@ export const api = {
     jsonReq('/api/settings/password', 'POST', { currentPassword, newPassword }).then((r) =>
       handle<{ ok: boolean }>(r),
     ),
+
+  // ---- Notion integration (Settings) ----
+  notionStatus: () =>
+    req('/api/settings/notion').then((r) =>
+      handle<{ configured: boolean; connected: boolean; databaseId?: string; tokenConfigured: boolean }>(r),
+    ),
+  notionTest: (token: string, databaseId: string) =>
+    jsonReq('/api/settings/notion/test', 'POST', { token, databaseId }).then((r) =>
+      handle<{ ok: boolean; message: string }>(r),
+    ),
+  notionSave: (token: string, databaseId: string) =>
+    jsonReq('/api/settings/notion', 'POST', { token, databaseId }).then((r) =>
+      handle<{ configured: boolean; connected: boolean; databaseId?: string }>(r),
+    ),
+  notionDisconnect: () =>
+    req('/api/settings/notion', { method: 'DELETE' }).then((r) => handle<{ ok: boolean }>(r)),
 };

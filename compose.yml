@@ -54,6 +54,7 @@ services:
       KIRO_BRIDGE_URL: ${KIRO_BRIDGE_URL:-http://host.docker.internal:3200}
       KIRO_BRIDGE_TOKEN: ${KIRO_BRIDGE_TOKEN:-}
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
       CHAT_TIMEOUT_MS: ${CHAT_TIMEOUT_MS:-120000}
     depends_on:
       database:

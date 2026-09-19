@@ -18,6 +18,10 @@ export const config = {
   // Internal service token: lets the MCP server (internal network) call the
   // protected item API on behalf of Kiro tool calls. Never exposed to browsers.
   internalApiToken: process.env.INTERNAL_API_TOKEN ?? '',
+
+  // Encryption key (hex, 64 chars = 32 bytes) for at-rest credential encryption
+  // (e.g. the Notion integration token). Comes from .env; never logged/committed.
+  credentialEncryptionKey: process.env.CREDENTIAL_ENCRYPTION_KEY ?? '',
   // Max time to wait for a chat/Kiro run (ms).
   chatTimeoutMs: Number(process.env.CHAT_TIMEOUT_MS ?? 120_000),
 } as const;

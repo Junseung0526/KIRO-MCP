@@ -68,4 +68,18 @@ export const backend = {
     }),
 
   deleteItem: (id: number) => request<void>(`/api/items/${id}`, { method: 'DELETE' }),
+
+  // ---- Notion (scoped to the stored database; token never passed here) ----
+  notionList: () => request<unknown[]>('/api/notion/list'),
+  notionSearch: (query: string) =>
+    request<unknown[]>(`/api/notion/search?query=${encodeURIComponent(query)}`),
+  notionGet: (id: string) => request<unknown>(`/api/notion/page/${encodeURIComponent(id)}`),
+  notionSchema: () => request<Record<string, { type: string; name: string }>>('/api/notion/schema'),
+  notionCreate: (values: Record<string, unknown>) =>
+    request<unknown>('/api/notion/page', { method: 'POST', body: JSON.stringify({ values }) }),
+  notionUpdate: (id: string, values: Record<string, unknown>) =>
+    request<unknown>('/api/notion/page', {
+      method: 'PATCH',
+      body: JSON.stringify({ id, values }),
+    }),
 };

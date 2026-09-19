@@ -25,6 +25,11 @@ const ALLOWED_TOOLS = [
   'delete_item',
   'search_items',
   'get_statistics',
+  'notion_list',
+  'notion_get',
+  'notion_create',
+  'notion_update',
+  'notion_search',
 ] as const;
 
 function buildServer(): McpServer {
@@ -123,6 +128,75 @@ function buildServer(): McpServer {
       inputSchema: {},
     },
     async () => asJson(await backend.statistics()),
+  );
+
+  // ---- Notion tools (scoped to the single database saved in Settings) ----
+  // The token is NEVER passed as an argument; the backend uses the stored,
+  // encrypted credential and only ever touches the saved database.
+
+  // 8) notion_list — list pages in the connected Notion database
+  server.registerTool(
+    'notion_list',
+    {
+      description:
+        'List pages from the connected Notion database (configured in Settings). No arguments; only the saved database is accessed.',
+      inputSchema: {},
+    },
+    async () => asJson(await backend.notionList()),
+  );
+
+  // 9) notion_search — search within the connected database only
+  server.registerTool(
+    'notion_search',
+    {
+      description:
+        'Search pages within the connected Notion database only (by title/text). Does not search the whole workspace.',
+      inputSchema: { query: z.string().min(1).max(200).describe('Search keyword') },
+    },
+    async ({ query }) => asJson(await backend.notionSearch(query)),
+  );
+
+  // 10) notion_get — get one page (must belong to the connected database)
+  server.registerTool(
+    'notion_get',
+    {
+      description:
+        'Get a single Notion page by id. Only pages belonging to the connected database are allowed.',
+      inputSchema: { id: z.string().min(20).describe('Notion page id') },
+    },
+    async ({ id }) => asJson(await backend.notionGet(id)),
+  );
+
+  // 11) notion_create — create a page in the connected database
+  server.registerTool(
+    'notion_create',
+    {
+      description:
+        'Create a page in the connected Notion database. Provide `values` as an object of { propertyName: value } matching the database schema (use the schema returned by other calls). The title property is required.',
+      inputSchema: {
+        values: z
+          .record(z.string(), z.unknown())
+          .describe('Map of Notion property name to value (must match the DB schema)'),
+      },
+    },
+    async ({ values }) => asJson(await backend.notionCreate(values as Record<string, unknown>)),
+  );
+
+  // 12) notion_update — update a page (must belong to the connected database)
+  server.registerTool(
+    'notion_update',
+    {
+      description:
+        'Update a Notion page by id. Only pages belonging to the connected database can be updated. Provide `values` as { propertyName: value }.',
+      inputSchema: {
+        id: z.string().min(20).describe('Notion page id to update'),
+        values: z
+          .record(z.string(), z.unknown())
+          .describe('Map of Notion property name to new value'),
+      },
+    },
+    async ({ id, values }) =>
+      asJson(await backend.notionUpdate(id, values as Record<string, unknown>)),
   );
 
   return server;

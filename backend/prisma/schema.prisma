@@ -48,3 +48,16 @@ model AppLog {
   @@index([createdAt])
   @@map("app_logs")
 }
+
+// Notion integration credential for this personal app. Exactly one row (id=1).
+// The token is stored ENCRYPTED (AES-256-GCM); never in plaintext. Only the
+// stored databaseId is ever accessed by Notion tools.
+model NotionCredential {
+  id             Int      @id @default(1)
+  encryptedToken String   @map("encrypted_token")
+  databaseId     String   @map("database_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("notion_credentials")
+}
