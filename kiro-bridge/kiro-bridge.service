@@ -13,6 +13,9 @@ EnvironmentFile=/home/ubuntu/KIRO-MCP/.env
 Environment=KIRO_BRIDGE_PORT=3200
 Environment=KIRO_BRIDGE_BIND=0.0.0.0
 Environment=KIRO_AGENT=kiro_mcp
+Environment=KIRO_MODEL=claude-haiku-4.5
+Environment=KIRO_WORKDIR=/home/ubuntu/.kiro-bridge-workdir
+Environment=KIRO_RESET_AFTER=20
 Environment=KIRO_BIN=/home/ubuntu/.local/bin/kiro-cli
 Environment=HOME=/home/ubuntu
 Environment=PATH=/home/ubuntu/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

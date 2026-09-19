@@ -96,6 +96,44 @@ export const api = {
   chatStatus: () => req('/api/chat/status').then((r) => handle<{ configured: boolean }>(r)),
   chat: (message: string) => jsonReq('/api/chat', 'POST', { message }).then((r) => handle<ChatReply>(r)),
 
+  // SSE streaming chat. Calls onStatus for heartbeats/progress and resolves
+  // with the final reply (or rejects on error). Same-origin cookies are sent
+  // automatically by EventSource.
+  chatStream(
+    message: string,
+    onStatus?: (state: string) => void,
+  ): { promise: Promise<ChatReply>; cancel: () => void } {
+    const url = `${API_BASE}/api/chat/stream?message=${encodeURIComponent(message)}`;
+    const es = new EventSource(url, { withCredentials: true });
+    let settled = false;
+    const promise = new Promise<ChatReply>((resolve, reject) => {
+      es.addEventListener('status', (e) => {
+        try { onStatus?.(JSON.parse((e as MessageEvent).data).state); } catch { /* ignore */ }
+      });
+      es.addEventListener('result', (e) => {
+        settled = true;
+        es.close();
+        try { resolve(JSON.parse((e as MessageEvent).data) as ChatReply); }
+        catch { reject(new Error('bad result payload')); }
+      });
+      es.addEventListener('error', (e) => {
+        // Distinguish app-level error events (with data) from transport errors.
+        const data = (e as MessageEvent).data;
+        if (data) {
+          settled = true;
+          es.close();
+          try { reject(new Error(JSON.parse(data).error || 'chat failed')); }
+          catch { reject(new Error('chat failed')); }
+        } else if (!settled) {
+          settled = true;
+          es.close();
+          reject(new Error('연결이 끊어졌습니다.'));
+        }
+      });
+    });
+    return { promise, cancel: () => { settled = true; es.close(); } };
+  },
+
   // ---- Logs ----
   logs: (limit = 100) => req(`/api/logs?limit=${limit}`).then((r) => handle<LogEntry[]>(r)),
 

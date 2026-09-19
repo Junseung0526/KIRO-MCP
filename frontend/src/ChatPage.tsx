@@ -10,6 +10,7 @@ export function ChatPage({ onDbMaybeChanged }: { onDbMaybeChanged?: () => void }
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
@@ -29,15 +30,21 @@ export function ChatPage({ onDbMaybeChanged }: { onDbMaybeChanged?: () => void }
     setMessages((m) => [...m, { role: 'user', text }]);
     setInput('');
     setSending(true);
+    setStatus('전송 중…');
     try {
-      const res = await api.chat(text);
+      // Use SSE streaming so the UI shows live progress during the (multi-second)
+      // Kiro run, then appends the real final reply.
+      const { promise } = api.chatStream(text, (state) => {
+        setStatus(state === 'accepted' ? '요청 수락됨…' : 'Kiro CLI 처리 중…');
+      });
+      const res = await promise;
       setMessages((m) => [...m, { role: 'ai', text: res.reply || '(빈 응답)' }]);
-      // The chat may have changed the DB (create/update/delete) — refresh views.
       onDbMaybeChanged?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : '전송 실패');
     } finally {
       setSending(false);
+      setStatus(null);
     }
   }
 
@@ -70,7 +77,7 @@ export function ChatPage({ onDbMaybeChanged }: { onDbMaybeChanged?: () => void }
               <div key={i} style={m.role === 'user' ? styles.bubbleUser : styles.bubbleAI}>{m.text}</div>
             ))
           )}
-          {sending && <div style={styles.bubbleAI}>처리 중… (Kiro CLI 실행)</div>}
+          {sending && <div style={styles.bubbleAI}>{status ?? '처리 중…'} <span style={{ opacity: 0.6 }}>(Kiro CLI)</span></div>}
         </div>
         {error && <div style={{ ...styles.error, margin: 0, borderRadius: 0 }}>오류: {error}</div>}
         <div style={styles.chatInputRow}>

@@ -34,6 +34,13 @@ AGENT = os.environ.get("KIRO_AGENT", "kiro_mcp")
 KIRO_BIN = os.environ.get("KIRO_BIN", os.path.expanduser("~/.local/bin/kiro-cli"))
 TIMEOUT_S = int(os.environ.get("KIRO_TIMEOUT_MS", "120000")) / 1000.0
 MAX_INPUT = 2000
+# Fast model keeps chat latency low. Overridable via env.
+MODEL = os.environ.get("KIRO_MODEL", "claude-haiku-4.5")
+# Fixed working dir so kiro-cli can --resume the same conversation, which
+# reuses the MCP connection/context and cuts per-request latency substantially.
+WORKDIR = os.environ.get("KIRO_WORKDIR", os.path.expanduser("~/.kiro-bridge-workdir"))
+# Reset the conversation after this many turns to avoid unbounded context growth.
+RESET_AFTER = int(os.environ.get("KIRO_RESET_AFTER", "20"))
 
 TRUST_TOOLS = ",".join([
     "kiro_mcp___list_items",
@@ -63,19 +70,32 @@ def scrub(s: str) -> str:
 
 # Single-flight lock: only one kiro-cli run at a time (limits resource use).
 _run_lock = threading.Lock()
+# Conversation turn counter for periodic reset (context hygiene).
+_turn_count = 0
 
 # Strip ANSI escape codes from kiro-cli output for clean chat display.
 _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
 
 
 def run_kiro(message: str):
+    global _turn_count
+    os.makedirs(WORKDIR, exist_ok=True)
+
+    # Resume the existing conversation (reuses MCP connection -> faster), but
+    # start fresh on the first turn and every RESET_AFTER turns.
+    resume = _turn_count > 0 and (_turn_count % RESET_AFTER != 0)
+
     args = [
         KIRO_BIN, "chat",
         "--agent", AGENT,
+        "--model", MODEL,
         "--no-interactive",
         "--trust-tools=" + TRUST_TOOLS,
-        message,
     ]
+    if resume:
+        args.append("--resume")
+    args.append(message)
+
     try:
         proc = subprocess.run(
             args,
@@ -83,10 +103,12 @@ def run_kiro(message: str):
             text=True,
             timeout=TIMEOUT_S,
             shell=False,  # injection-safe: args passed as a list
+            cwd=WORKDIR,  # fixed cwd so --resume finds the conversation
             env=os.environ.copy(),
         )
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "kiro-cli timed out", "output": ""}
+    _turn_count += 1
     stdout = _ANSI_RE.sub("", proc.stdout or "")
     if proc.returncode != 0 and not stdout.strip():
         return {"ok": False, "error": "kiro-cli failed", "output": scrub(proc.stderr or "")[:500]}
@@ -151,8 +173,27 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    print(f"[bridge] listening on {BIND}:{PORT}, agent={AGENT}, bin={KIRO_BIN}", flush=True)
+    print(f"[bridge] listening on {BIND}:{PORT}, agent={AGENT}, model={MODEL}, bin={KIRO_BIN}", flush=True)
+    print(f"[bridge] workdir={WORKDIR}, reset_after={RESET_AFTER}", flush=True)
     print(f"[bridge] trusted tools: {TRUST_TOOLS}", flush=True)
+
+    # Warm up the conversation in the background so the FIRST real user request
+    # can use --resume (fast). Best-effort; failures are non-fatal.
+    def _warmup():
+        try:
+            if _run_lock.acquire(blocking=False):
+                try:
+                    if _turn_count == 0:
+                        print("[bridge] warmup start", flush=True)
+                        run_kiro("준비 확인용. 도구를 호출하지 말고 'ready'라고만 답해.")
+                        print("[bridge] warmup done", flush=True)
+                finally:
+                    _run_lock.release()
+        except Exception as e:  # noqa: BLE001
+            print(f"[bridge] warmup skipped: {e}", flush=True)
+
+    threading.Thread(target=_warmup, daemon=True).start()
+
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
 
