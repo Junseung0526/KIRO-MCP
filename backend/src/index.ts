@@ -1,12 +1,16 @@
 import { createApp } from './app';
 import { prisma } from './prisma';
 import { config, assertAuthConfigured } from './config';
+import { storageService } from './documents/storage.service';
 
 const PORT = config.port;
 
 async function main() {
   // Fail fast if auth secrets are missing (never run with an insecure default).
   assertAuthConfigured();
+
+  // Ensure the document storage directory exists (persistent volume mount).
+  await storageService.ensureReady();
 
   const app = createApp();
 

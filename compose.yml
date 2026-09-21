@@ -56,6 +56,10 @@ services:
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
       CHAT_TIMEOUT_MS: ${CHAT_TIMEOUT_MS:-120000}
+      # Document library storage (persistent volume) + limits.
+      DOCUMENT_STORAGE_DIR: /app/storage/documents
+      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-100}
+      MAX_STORAGE_GB: ${MAX_STORAGE_GB:-5}
     depends_on:
       database:
         condition: service_healthy
@@ -68,6 +72,9 @@ services:
     #   - "${BACKEND_PORT:-3001}:3000"
     expose:
       - "3000"
+    volumes:
+      # Persistent storage for uploaded documents (survives container recreation).
+      - document_storage:/app/storage/documents
     networks:
       - kiro-net
     healthcheck:
@@ -121,6 +128,8 @@ services:
 
 volumes:
   pgdata:
+    driver: local
+  document_storage:
     driver: local
 
 networks:

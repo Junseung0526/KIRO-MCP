@@ -49,3 +49,4 @@ docker-compose.override.yml
 # Coverage / test
 coverage/
 .nyc_output/
+backend/storage/

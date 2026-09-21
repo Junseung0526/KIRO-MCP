@@ -24,6 +24,13 @@ export const config = {
   credentialEncryptionKey: process.env.CREDENTIAL_ENCRYPTION_KEY ?? '',
   // Max time to wait for a chat/Kiro run (ms).
   chatTimeoutMs: Number(process.env.CHAT_TIMEOUT_MS ?? 120_000),
+
+  // ---- Document Library storage ----
+  // Directory where uploaded files are stored (backed by a persistent volume).
+  documentStorageDir: process.env.DOCUMENT_STORAGE_DIR ?? '/app/storage/documents',
+  // Per-file upload limit (MB) and total storage cap (GB).
+  maxFileSizeMb: Number(process.env.MAX_FILE_SIZE_MB ?? 100),
+  maxStorageGb: Number(process.env.MAX_STORAGE_GB ?? 5),
 } as const;
 
 export function assertAuthConfigured(): void {

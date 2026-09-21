@@ -8,6 +8,7 @@ import { chatRouter } from './routes/chat.routes';
 import { logsRouter } from './routes/logs.routes';
 import { settingsRouter } from './routes/settings.routes';
 import { notionRouter } from './routes/notion.routes';
+import { documentRouter } from './routes/document.routes';
 
 export function createApp() {
   const app = express();
@@ -43,6 +44,7 @@ export function createApp() {
   app.use('/api/logs', logsRouter);
   app.use('/api/settings', settingsRouter);
   app.use('/api/notion', notionRouter);
+  app.use('/api/documents', documentRouter);
 
   // 404 fallback
   app.use((_req: Request, res: Response) => {

@@ -61,3 +61,27 @@ model NotionCredential {
 
   @@map("notion_credentials")
 }
+
+// Uploaded document (PDF/image/office/text). The file itself lives on a
+// persistent volume; only metadata is stored here. Designed to be extensible
+// for future text-extraction/RAG (add extractedText/embedding columns later).
+model Document {
+  id             String    @id @default(uuid())
+  originalName   String    @map("original_name")
+  storedName     String    @map("stored_name") // UUID-based filename on disk
+  mimeType       String    @map("mime_type")
+  ext            String // normalized lowercase extension (pdf, docx, png, ...)
+  category       String // pdf | image | presentation | spreadsheet | document | text
+  previewType    String    @map("preview_type") // pdf | image | text | markdown | unsupported
+  sizeBytes      Int       @map("size_bytes")
+  storagePath    String    @map("storage_path") // relative path within storage dir
+  pageCount      Int?      @map("page_count")
+  lastViewedAt   DateTime? @map("last_viewed_at")
+  lastViewedPage Int?      @map("last_viewed_page") // page/slide/sheet index
+  uploadedAt     DateTime  @default(now()) @map("uploaded_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([uploadedAt])
+  @@index([originalName])
+  @@map("documents")
+}
