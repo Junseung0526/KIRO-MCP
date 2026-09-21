@@ -6,6 +6,7 @@ import { DashboardPage } from './DashboardPage';
 import { ItemsPage } from './ItemsPage';
 import { ChatPage } from './ChatPage';
 import { NotionPage } from './NotionPage';
+import { DocumentsPage } from './DocumentsPage';
 import { LogsPage } from './LogsPage';
 import { SettingsPage } from './SettingsPage';
 import { Spinner } from './components/ui';
@@ -78,6 +79,7 @@ export function App() {
       {page === 'dashboard' && <DashboardPage reloadSignal={reloadSignal} onNavigate={setPage} />}
       {page === 'items' && <ItemsPage reloadSignal={reloadSignal} onNavigate={setPage} />}
       {page === 'chat' && <ChatPage onDbMaybeChanged={bump} onNavigate={setPage} />}
+      {page === 'documents' && <DocumentsPage />}
       {page === 'notion' && <NotionPage onNavigate={setPage} />}
       {page === 'logs' && <LogsPage />}
       {page === 'settings' && <SettingsPage onLogout={() => void logout()} />}

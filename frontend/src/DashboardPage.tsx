@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, Item, Statistics } from './api';
+import { api, Item, Statistics, StorageUsage, DocumentDto } from './api';
 import { Button, Card, EmptyState, ErrorState, PageHeader, Skeleton, StatusIndicator } from './components/ui';
+import { formatBytes, relativeTime } from './utils/format';
 import type { PageKey } from './components/AppShell';
 
 export function DashboardPage({ reloadSignal, onNavigate }: { reloadSignal?: number; onNavigate: (p: PageKey) => void }) {
   const [stats, setStats] = useState<Statistics | null>(null);
   const [recent, setRecent] = useState<Item[]>([]);
   const [notion, setNotion] = useState<{ configured: boolean; connected: boolean } | null>(null);
+  const [storage, setStorage] = useState<StorageUsage | null>(null);
+  const [recentDocs, setRecentDocs] = useState<DocumentDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -16,8 +19,9 @@ export function DashboardPage({ reloadSignal, onNavigate }: { reloadSignal?: num
       const [s, items] = await Promise.all([api.statistics(), api.listItems()]);
       setStats(s);
       setRecent(items.slice(0, 5));
-      // Notion status is best-effort; don't fail the dashboard if it errors.
       try { setNotion(await api.notionStatus()); } catch { setNotion(null); }
+      try { setStorage(await api.documentStorage()); } catch { setStorage(null); }
+      try { setRecentDocs(await api.documentRecent()); } catch { setRecentDocs([]); }
     } catch (e) {
       setError(e instanceof Error ? e.message : '불러오기 실패');
     } finally { setLoading(false); }
@@ -46,12 +50,38 @@ export function DashboardPage({ reloadSignal, onNavigate }: { reloadSignal?: num
         ) : (
           <>
             <StatCard value={stats.totalItems} label="전체 아이템" />
-            <StatCard value={stats.itemsWithDescription} label="설명 있음" />
-            <StatCard value={stats.itemsWithoutDescription} label="설명 없음" />
+            <StatCard value={storage?.fileCount ?? 0} label="수업자료" />
+            <StatCard value={storage ? formatBytes(storage.usedBytes) : '—'} label="Storage 사용" />
             <StatCard value={notion?.connected ? '연결됨' : notion?.configured ? '확인 필요' : '미연결'} label="Notion" />
           </>
         )}
       </div>
+
+      {/* Recent documents row */}
+      <Card style={{ marginBottom: 'var(--sp-6)' }}>
+        <div className="row between" style={{ marginBottom: 'var(--sp-3)' }}>
+          <div className="section-title" style={{ margin: 0 }}>최근 본 자료</div>
+          <Button size="sm" variant="ghost" onClick={() => onNavigate('documents')}>자료실 열기</Button>
+        </div>
+        {loading ? (
+          <div className="stack">{[0, 1].map((i) => <Skeleton key={i} h={18} />)}</div>
+        ) : recentDocs.length === 0 ? (
+          <EmptyState icon="📚" title="최근 본 자료가 없습니다."
+            desc="수업 PDF·PPT를 업로드하면 여기에서 바로 이어볼 수 있어요."
+            actions={<Button variant="primary" onClick={() => onNavigate('documents')}>자료 업로드</Button>} />
+        ) : (
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {recentDocs.map((d) => (
+              <li key={d.id} className="listrow" style={{ paddingLeft: 0, paddingRight: 0, cursor: 'pointer' }} onClick={() => onNavigate('documents')}>
+                <div className="grow">
+                  <div className="listrow__title">{d.originalName}</div>
+                  <div className="listrow__meta">{relativeTime(d.lastViewedAt)}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <div className="grid grid--2">
         {/* Recent items */}

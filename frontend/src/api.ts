@@ -47,6 +47,30 @@ export interface NotionPage {
   lastEditedTime?: string;
 }
 
+export interface DocumentDto {
+  id: string;
+  originalName: string;
+  ext: string;
+  mimeType: string;
+  category: string;
+  previewType: 'pdf' | 'image' | 'text' | 'markdown' | 'pptx' | 'unsupported';
+  sizeBytes: number;
+  pageCount: number | null;
+  lastViewedAt: string | null;
+  lastViewedPage: number | null;
+  uploadedAt: string;
+  updatedAt: string;
+}
+
+export interface StorageUsage {
+  usedBytes: number;
+  totalBytes: number;
+  remainingBytes: number;
+  fileCount: number;
+  usagePercent: number;
+  byCategory: Record<string, number>;
+}
+
 // Thrown so callers can detect auth loss and redirect to login.
 export class UnauthorizedError extends Error {}
 
@@ -176,4 +200,39 @@ export const api = {
   notionListPages: () => req('/api/notion/list').then((r) => handle<NotionPage[]>(r)),
   notionSearchPages: (query: string) =>
     req(`/api/notion/search?query=${encodeURIComponent(query)}`).then((r) => handle<NotionPage[]>(r)),
+
+  // ---- Documents (자료실) ----
+  documents: (opts?: { q?: string; category?: string; sort?: string }) => {
+    const p = new URLSearchParams();
+    if (opts?.q) p.set('q', opts.q);
+    if (opts?.category && opts.category !== 'all') p.set('category', opts.category);
+    if (opts?.sort) p.set('sort', opts.sort);
+    const qs = p.toString();
+    return req(`/api/documents${qs ? `?${qs}` : ''}`).then((r) => handle<DocumentDto[]>(r));
+  },
+  documentStorage: () => req('/api/documents/storage').then((r) => handle<StorageUsage>(r)),
+  documentRecent: () => req('/api/documents/recent').then((r) => handle<DocumentDto[]>(r)),
+  documentGet: (id: string) => req(`/api/documents/${id}`).then((r) => handle<DocumentDto>(r)),
+  documentDelete: (id: string) => req(`/api/documents/${id}`, { method: 'DELETE' }).then((r) => handle<void>(r)),
+  documentRecordView: (id: string, page?: number) =>
+    jsonReq(`/api/documents/${id}/view`, 'POST', { page }).then((r) => handle<DocumentDto>(r)),
+  // File URL for inline viewing/streaming (cookie auth carries over same-origin).
+  documentFileUrl: (id: string, download = false) =>
+    `${API_BASE}/api/documents/${id}/file${download ? '?download=1' : ''}`,
+  // Upload with progress via XHR (fetch lacks upload progress).
+  documentUpload: (file: File, onProgress?: (pct: number) => void) =>
+    new Promise<DocumentDto>((resolve, reject) => {
+      const form = new FormData();
+      form.append('file', file);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE}/api/documents`);
+      xhr.withCredentials = true;
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100)); };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) { try { resolve(JSON.parse(xhr.responseText)); } catch { reject(new Error('bad response')); } }
+        else { let m = `업로드 실패 (${xhr.status})`; try { m = JSON.parse(xhr.responseText).error || m; } catch { /* */ } reject(new Error(m)); }
+      };
+      xhr.onerror = () => reject(new Error('네트워크 오류'));
+      xhr.send(form);
+    }),
 };

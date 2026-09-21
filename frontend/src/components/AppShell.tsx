@@ -2,12 +2,13 @@ import { ReactNode, useEffect, useState } from 'react';
 import { StatusIndicator } from './ui';
 import { useTheme } from '../hooks/useTheme';
 
-export type PageKey = 'dashboard' | 'items' | 'chat' | 'notion' | 'logs' | 'settings';
+export type PageKey = 'dashboard' | 'items' | 'chat' | 'documents' | 'notion' | 'logs' | 'settings';
 
 const NAV: { key: PageKey; label: string; icon: string }[] = [
   { key: 'dashboard', label: 'Dashboard', icon: '◫' },
   { key: 'items', label: 'Items', icon: '☰' },
   { key: 'chat', label: 'AI Chat', icon: '✦' },
+  { key: 'documents', label: '수업자료', icon: '📚' },
   { key: 'notion', label: 'Notion', icon: '❖' },
   { key: 'logs', label: 'Logs', icon: '≡' },
   { key: 'settings', label: 'Settings', icon: '⚙' },

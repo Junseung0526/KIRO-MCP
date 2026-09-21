@@ -3,7 +3,7 @@
 // renamed executable/script cannot masquerade as an allowed document.
 
 export type Category = 'pdf' | 'image' | 'presentation' | 'spreadsheet' | 'document' | 'text';
-export type PreviewType = 'pdf' | 'image' | 'text' | 'markdown' | 'unsupported';
+export type PreviewType = 'pdf' | 'image' | 'text' | 'markdown' | 'pptx' | 'unsupported';
 
 export interface TypeSpec {
   ext: string;
@@ -21,12 +21,12 @@ export const TYPES: Record<string, TypeSpec> = {
   webp: { ext: 'webp', mime: 'image/webp', category: 'image', preview: 'image' },
   txt: { ext: 'txt', mime: 'text/plain', category: 'text', preview: 'text' },
   md: { ext: 'md', mime: 'text/markdown', category: 'text', preview: 'markdown' },
-  // Office formats: stored + downloadable, but no in-browser preview (avoids
-  // heavy server-side conversion on a 1GB host). Preview = unsupported.
+  // Office formats. PPTX renders client-side (pptx-preview, no server conversion).
+  // Legacy PPT and Word/Excel are stored + downloadable (preview unsupported).
   doc: { ext: 'doc', mime: 'application/msword', category: 'document', preview: 'unsupported' },
   docx: { ext: 'docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', category: 'document', preview: 'unsupported' },
   ppt: { ext: 'ppt', mime: 'application/vnd.ms-powerpoint', category: 'presentation', preview: 'unsupported' },
-  pptx: { ext: 'pptx', mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', category: 'presentation', preview: 'unsupported' },
+  pptx: { ext: 'pptx', mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', category: 'presentation', preview: 'pptx' },
   xls: { ext: 'xls', mime: 'application/vnd.ms-excel', category: 'spreadsheet', preview: 'unsupported' },
   xlsx: { ext: 'xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', category: 'spreadsheet', preview: 'unsupported' },
 };
