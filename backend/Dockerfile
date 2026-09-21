@@ -49,6 +49,11 @@ COPY package.json ./
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
 
+# Pre-create the document storage mount point owned by `node` so that when the
+# named volume is first initialized, Docker copies this ownership (non-root can
+# then write uploads). Without this the empty volume would be root-owned.
+RUN mkdir -p /app/storage/documents
+
 # Run as the built-in non-root `node` user.
 RUN chown -R node:node /app
 USER node
