@@ -41,6 +41,22 @@ function normalizeExt(name: string): string {
   return path.extname(name).replace('.', '').toLowerCase();
 }
 
+// multer decodes the multipart filename as latin1, which mangles UTF-8 names
+// (e.g. Korean). Re-interpret the latin1 bytes as UTF-8 to recover the real
+// name. If the result isn't valid UTF-8, fall back to the original.
+function decodeFilename(name: string): string {
+  try {
+    const utf8 = Buffer.from(name, 'latin1').toString('utf8');
+    // If re-encoding round-trips, latin1->utf8 was the correct interpretation.
+    if (Buffer.from(utf8, 'utf8').toString('latin1') === name && !utf8.includes('\uFFFD')) {
+      return utf8;
+    }
+  } catch {
+    /* ignore */
+  }
+  return name;
+}
+
 export interface StorageUsage {
   usedBytes: number;
   totalBytes: number;
@@ -68,7 +84,8 @@ export const documentService = {
 
   // Handle an uploaded temp file (multer disk storage): validate, store, persist.
   async create(file: { originalname: string; path: string; size: number }): Promise<DocumentDto> {
-    const ext = normalizeExt(file.originalname);
+    const originalName = decodeFilename(file.originalname);
+    const ext = normalizeExt(originalName);
     const spec = specForExt(ext);
     if (!spec) {
       throw new BadRequestError(
@@ -98,7 +115,7 @@ export const documentService = {
     await storageService.save(storedName, file.path);
 
     const doc = await documentRepository.create({
-      originalName: file.originalname.slice(0, 255),
+      originalName: originalName.slice(0, 255),
       storedName,
       mimeType: spec.mime,
       ext: spec.ext,
