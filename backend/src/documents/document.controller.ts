@@ -2,20 +2,30 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { BadRequestError } from '../errors';
 import { documentService } from './document.service';
+import { folderService } from './folder.service';
 import { SortKey } from '../repositories/document.repository';
 
 const listQuery = z.object({
   q: z.string().trim().max(200).optional(),
   category: z.enum(['all', 'pdf', 'image', 'presentation', 'spreadsheet', 'document', 'text']).optional(),
   sort: z.enum(['recent', 'oldest', 'name', 'size', 'viewed']).optional(),
+  // folderId: omitted = all; 'none' = uncategorized; uuid = that folder.
+  folderId: z.string().optional(),
 });
 const idParam = z.object({ id: z.string().uuid('invalid id') });
 const viewBody = z.object({ page: z.coerce.number().int().min(0).max(100000).optional() });
+const moveBody = z.object({ folderId: z.string().uuid().nullable() });
+
+function parseFolderFilter(v?: string): string | null | undefined {
+  if (v === undefined || v === '') return undefined; // all
+  if (v === 'none') return null; // uncategorized
+  return v; // specific folder id
+}
 
 export const documentController = {
   async list(req: Request, res: Response) {
-    const { q, category, sort } = listQuery.parse(req.query);
-    res.json(await documentService.list(q, category, (sort ?? 'recent') as SortKey));
+    const { q, category, sort, folderId } = listQuery.parse(req.query);
+    res.json(await documentService.list(q, category, (sort ?? 'recent') as SortKey, parseFolderFilter(folderId)));
   },
 
   async storage(_req: Request, res: Response) {
@@ -34,7 +44,18 @@ export const documentController = {
   async create(req: Request, res: Response) {
     const file = (req as Request & { file?: Express.Multer.File }).file;
     if (!file) throw new BadRequestError('파일이 필요합니다.');
-    res.status(201).json(await documentService.create(file));
+    // Optional folder to upload into (multipart field).
+    const raw = (req.body?.folderId as string | undefined) ?? undefined;
+    const folderId = raw && raw !== 'none' && raw !== '' ? raw : null;
+    if (folderId) await folderService.assertExists(folderId);
+    res.status(201).json(await documentService.create(file, folderId));
+  },
+
+  async move(req: Request, res: Response) {
+    const { id } = idParam.parse(req.params);
+    const { folderId } = moveBody.parse(req.body ?? {});
+    if (folderId) await folderService.assertExists(folderId);
+    res.json(await documentService.move(id, folderId));
   },
 
   async remove(req: Request, res: Response) {

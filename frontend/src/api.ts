@@ -58,6 +58,7 @@ export interface DocumentDto {
   pageCount: number | null;
   lastViewedAt: string | null;
   lastViewedPage: number | null;
+  folderId: string | null;
   uploadedAt: string;
   updatedAt: string;
 }
@@ -69,6 +70,14 @@ export interface StorageUsage {
   fileCount: number;
   usagePercent: number;
   byCategory: Record<string, number>;
+}
+
+export interface FolderDto {
+  id: string;
+  name: string;
+  documentCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Thrown so callers can detect auth loss and redirect to login.
@@ -202,11 +211,12 @@ export const api = {
     req(`/api/notion/search?query=${encodeURIComponent(query)}`).then((r) => handle<NotionPage[]>(r)),
 
   // ---- Documents (자료실) ----
-  documents: (opts?: { q?: string; category?: string; sort?: string }) => {
+  documents: (opts?: { q?: string; category?: string; sort?: string; folderId?: string }) => {
     const p = new URLSearchParams();
     if (opts?.q) p.set('q', opts.q);
     if (opts?.category && opts.category !== 'all') p.set('category', opts.category);
     if (opts?.sort) p.set('sort', opts.sort);
+    if (opts?.folderId) p.set('folderId', opts.folderId); // 'none' = uncategorized, uuid, or omit=all
     const qs = p.toString();
     return req(`/api/documents${qs ? `?${qs}` : ''}`).then((r) => handle<DocumentDto[]>(r));
   },
@@ -214,16 +224,17 @@ export const api = {
   documentRecent: () => req('/api/documents/recent').then((r) => handle<DocumentDto[]>(r)),
   documentGet: (id: string) => req(`/api/documents/${id}`).then((r) => handle<DocumentDto>(r)),
   documentDelete: (id: string) => req(`/api/documents/${id}`, { method: 'DELETE' }).then((r) => handle<void>(r)),
+  documentMove: (id: string, folderId: string | null) =>
+    jsonReq(`/api/documents/${id}/folder`, 'PATCH', { folderId }).then((r) => handle<DocumentDto>(r)),
   documentRecordView: (id: string, page?: number) =>
     jsonReq(`/api/documents/${id}/view`, 'POST', { page }).then((r) => handle<DocumentDto>(r)),
-  // File URL for inline viewing/streaming (cookie auth carries over same-origin).
   documentFileUrl: (id: string, download = false) =>
     `${API_BASE}/api/documents/${id}/file${download ? '?download=1' : ''}`,
-  // Upload with progress via XHR (fetch lacks upload progress).
-  documentUpload: (file: File, onProgress?: (pct: number) => void) =>
+  documentUpload: (file: File, folderId: string | null, onProgress?: (pct: number) => void) =>
     new Promise<DocumentDto>((resolve, reject) => {
       const form = new FormData();
       form.append('file', file);
+      if (folderId) form.append('folderId', folderId);
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${API_BASE}/api/documents`);
       xhr.withCredentials = true;
@@ -235,4 +246,10 @@ export const api = {
       xhr.onerror = () => reject(new Error('네트워크 오류'));
       xhr.send(form);
     }),
+
+  // ---- Folders (과목) ----
+  folders: () => req('/api/folders').then((r) => handle<FolderDto[]>(r)),
+  folderCreate: (name: string) => jsonReq('/api/folders', 'POST', { name }).then((r) => handle<FolderDto>(r)),
+  folderRename: (id: string, name: string) => jsonReq(`/api/folders/${id}`, 'PATCH', { name }).then((r) => handle<FolderDto>(r)),
+  folderDelete: (id: string) => req(`/api/folders/${id}`, { method: 'DELETE' }).then((r) => handle<void>(r)),
 };

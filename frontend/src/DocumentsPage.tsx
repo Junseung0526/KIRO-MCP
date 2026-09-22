@@ -1,5 +1,5 @@
 import { ChangeEvent, DragEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { api, DocumentDto, StorageUsage } from './api';
+import { api, DocumentDto, FolderDto, StorageUsage } from './api';
 import { Button, Card, EmptyState, ErrorState, Input, Modal, PageHeader, Skeleton, StatusIndicator } from './components/ui';
 import { DocumentViewer } from './components/DocumentViewer';
 import { useToast } from './components/Toast';
@@ -16,58 +16,70 @@ const SORTS = [
 ];
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx';
 
-interface UploadItem { name: string; pct: number; status: 'uploading' | 'done' | 'error'; error?: string }
+interface UploadItem { name: string; pct: number; status: 'uploading' | 'done' | 'error' }
+// folder selection: 'all' = every doc, 'none' = uncategorized, or a folder id
+type FolderSel = 'all' | 'none' | string;
 
 export function DocumentsPage() {
   const toast = useToast();
   const [docs, setDocs] = useState<DocumentDto[]>([]);
+  const [folders, setFolders] = useState<FolderDto[]>([]);
   const [storage, setStorage] = useState<StorageUsage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [category, setCategory] = useState('all');
   const [sort, setSort] = useState('recent');
+  const [folderSel, setFolderSel] = useState<FolderSel>('all');
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [viewing, setViewing] = useState<DocumentDto | null>(null);
   const [confirmDel, setConfirmDel] = useState<DocumentDto | null>(null);
+  const [moving, setMoving] = useState<DocumentDto | null>(null);
+  const [folderModal, setFolderModal] = useState<null | { mode: 'create' } | { mode: 'rename'; folder: FolderDto }>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<number | undefined>(undefined);
 
-  const load = useCallback(async (query: string, cat: string, srt: string) => {
+  const loadFolders = useCallback(async () => {
+    try { setFolders(await api.folders()); } catch { /* keep */ }
+  }, []);
+
+  const load = useCallback(async (query: string, cat: string, srt: string, fsel: FolderSel) => {
     setLoading(true); setError(null);
     try {
-      const [d, s] = await Promise.all([api.documents({ q: query, category: cat, sort: srt }), api.documentStorage()]);
+      const folderId = fsel === 'all' ? undefined : fsel; // 'none' or id passes through
+      const [d, s] = await Promise.all([api.documents({ q: query, category: cat, sort: srt, folderId }), api.documentStorage()]);
       setDocs(d); setStorage(s);
     } catch (e) { setError(e instanceof Error ? e.message : '불러오기 실패'); }
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { void load(q, category, sort); /* eslint-disable-next-line */ }, [category, sort]);
+  useEffect(() => { void loadFolders(); }, [loadFolders]);
+  useEffect(() => { void load(q, category, sort, folderSel); /* eslint-disable-next-line */ }, [category, sort, folderSel]);
 
   function onSearch(v: string) {
     setQ(v);
     window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => void load(v, category, sort), 350);
+    debounceRef.current = window.setTimeout(() => void load(v, category, sort, folderSel), 350);
   }
 
   async function handleFiles(files: FileList | File[]) {
     const arr = Array.from(files);
     if (storage && storage.usagePercent >= 100) { toast.error('저장공간이 부족해 업로드할 수 없습니다.'); return; }
+    const targetFolder = folderSel === 'all' || folderSel === 'none' ? null : folderSel;
     for (const file of arr) {
       setUploads((u) => [...u, { name: file.name, pct: 0, status: 'uploading' }]);
       try {
-        await api.documentUpload(file, (pct) =>
+        await api.documentUpload(file, targetFolder, (pct) =>
           setUploads((u) => u.map((it) => (it.name === file.name && it.status === 'uploading' ? { ...it, pct } : it))));
         setUploads((u) => u.map((it) => (it.name === file.name ? { ...it, pct: 100, status: 'done' } : it)));
         toast.success(`"${file.name}" 업로드 완료`);
       } catch (e) {
-        setUploads((u) => u.map((it) => (it.name === file.name ? { ...it, status: 'error', error: e instanceof Error ? e.message : '실패' } : it)));
+        setUploads((u) => u.map((it) => (it.name === file.name ? { ...it, status: 'error' } : it)));
         toast.error(`"${file.name}" 업로드 실패: ${e instanceof Error ? e.message : ''}`);
       }
     }
-    await load(q, category, sort);
-    // Clear finished rows after a moment.
+    await Promise.all([load(q, category, sort, folderSel), loadFolders()]);
     setTimeout(() => setUploads((u) => u.filter((it) => it.status === 'uploading')), 2500);
   }
 
@@ -75,18 +87,54 @@ export function DocumentsPage() {
   function onPick(e: ChangeEvent<HTMLInputElement>) { if (e.target.files?.length) void handleFiles(e.target.files); e.target.value = ''; }
 
   async function doDelete(doc: DocumentDto) {
-    try { await api.documentDelete(doc.id); toast.success('자료가 삭제되었습니다.'); setConfirmDel(null); await load(q, category, sort); }
+    try { await api.documentDelete(doc.id); toast.success('자료가 삭제되었습니다.'); setConfirmDel(null); await Promise.all([load(q, category, sort, folderSel), loadFolders()]); }
     catch { toast.error('삭제에 실패했습니다.'); }
+  }
+
+  async function doMove(doc: DocumentDto, folderId: string | null) {
+    try { await api.documentMove(doc.id, folderId); toast.success('폴더를 이동했습니다.'); setMoving(null); await Promise.all([load(q, category, sort, folderSel), loadFolders()]); }
+    catch { toast.error('이동에 실패했습니다.'); }
+  }
+
+  async function deleteFolder(f: FolderDto) {
+    if (!window.confirm(`"${f.name}" 폴더를 삭제할까요? 안의 자료는 삭제되지 않고 미분류로 이동합니다.`)) return;
+    try { await api.folderDelete(f.id); toast.success('폴더가 삭제되었습니다.'); if (folderSel === f.id) setFolderSel('all'); await Promise.all([loadFolders(), load(q, category, sort, folderSel === f.id ? 'all' : folderSel)]); }
+    catch { toast.error('폴더 삭제에 실패했습니다.'); }
   }
 
   const pct = storage?.usagePercent ?? 0;
   const storageWarn = pct >= 90 ? 'full' : pct >= 70 ? 'warn' : 'ok';
+  const currentFolderName = folderSel === 'all' ? '전체' : folderSel === 'none' ? '미분류' : folders.find((f) => f.id === folderSel)?.name ?? '';
 
   return (
     <>
-      <PageHeader title="수업자료" subtitle="한 번 올린 자료를 브라우저에서 바로 열어보세요."
-        actions={<Button variant="primary" onClick={() => fileRef.current?.click()}>+ 자료 업로드</Button>} />
+      <PageHeader title="수업자료" subtitle="과목별 폴더로 정리하고 브라우저에서 바로 열어보세요."
+        actions={<>
+          <Button onClick={() => setFolderModal({ mode: 'create' })}>+ 과목 폴더</Button>
+          <Button variant="primary" onClick={() => fileRef.current?.click()}>+ 자료 업로드</Button>
+        </>} />
       <input ref={fileRef} type="file" accept={ACCEPT} multiple hidden onChange={onPick} />
+
+      {/* Folder (subject) bar */}
+      <div className="folderbar">
+        <button className={`folderchip${folderSel === 'all' ? ' folderchip--active' : ''}`} onClick={() => setFolderSel('all')}>
+          전체 <span className="folderchip__count">{storage?.fileCount ?? 0}</span>
+        </button>
+        <button className={`folderchip${folderSel === 'none' ? ' folderchip--active' : ''}`} onClick={() => setFolderSel('none')}>
+          미분류
+        </button>
+        {folders.map((f) => (
+          <span key={f.id} className={`folderchip${folderSel === f.id ? ' folderchip--active' : ''}`}>
+            <span onClick={() => setFolderSel(f.id)} style={{ cursor: 'pointer' }}>📁 {f.name} <span className="folderchip__count">{f.documentCount}</span></span>
+            {folderSel === f.id && (
+              <>
+                <button className="folderchip__edit" title="이름 변경" onClick={() => setFolderModal({ mode: 'rename', folder: f })}>✎</button>
+                <button className="folderchip__edit" title="폴더 삭제" onClick={() => void deleteFolder(f)}>🗑</button>
+              </>
+            )}
+          </span>
+        ))}
+      </div>
 
       {/* Storage */}
       <Card style={{ marginBottom: 'var(--sp-4)' }}>
@@ -113,6 +161,7 @@ export function DocumentsPage() {
         onClick={() => fileRef.current?.click()} onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)} onDrop={onDrop} role="button" tabIndex={0}
         onKeyDown={(e) => { if (e.key === 'Enter') fileRef.current?.click(); }}>
+        {currentFolderName !== '전체' && currentFolderName !== '미분류' ? <strong>[{currentFolderName}] </strong> : null}
         PDF·PPTX·DOCX·XLSX·이미지·TXT·MD를 여기에 놓거나 클릭해서 업로드
       </div>
 
@@ -144,10 +193,10 @@ export function DocumentsPage() {
       {loading ? (
         <div className="docgrid">{[0, 1, 2, 3].map((i) => <Card key={i}><Skeleton h={40} w={40} r={10} /><div style={{ height: 10 }} /><Skeleton h={14} /></Card>)}</div>
       ) : error ? (
-        <Card><ErrorState message="자료를 불러오지 못했습니다." onRetry={() => void load(q, category, sort)} /></Card>
+        <Card><ErrorState message="자료를 불러오지 못했습니다." onRetry={() => void load(q, category, sort, folderSel)} /></Card>
       ) : docs.length === 0 ? (
         <Card>
-          <EmptyState icon="📚" title={q || category !== 'all' ? '조건에 맞는 자료가 없습니다.' : '아직 수업자료가 없습니다.'}
+          <EmptyState icon="📚" title={q || category !== 'all' || folderSel !== 'all' ? '조건에 맞는 자료가 없습니다.' : '아직 수업자료가 없습니다.'}
             desc="PDF, PPT, 문서 파일을 업로드하면 언제든 이곳에서 바로 볼 수 있습니다."
             actions={<Button variant="primary" onClick={() => fileRef.current?.click()}>자료 업로드</Button>} />
         </Card>
@@ -159,12 +208,14 @@ export function DocumentsPage() {
                 <span className={`doc-ic doc-ic--${d.category}`} aria-hidden>{categoryLabel(d.category, d.ext)}</span>
                 <div className="grow">
                   <div className="doccard__name" title={d.originalName}>{d.originalName}</div>
+                  {d.folderId && <div className="doccard__meta">📁 {folders.find((f) => f.id === d.folderId)?.name ?? ''}</div>}
                 </div>
               </div>
               <div className="doccard__meta">{formatBytes(d.sizeBytes)} · {new Date(d.uploadedAt).toLocaleDateString()}</div>
               {d.lastViewedAt && <div className="doccard__meta">최근 열람 {relativeTime(d.lastViewedAt)}</div>}
               <div className="doccard__actions" onClick={(e) => e.stopPropagation()}>
                 <Button size="sm" onClick={() => setViewing(d)}>열기</Button>
+                <Button size="sm" variant="ghost" onClick={() => setMoving(d)}>이동</Button>
                 <a className="btn btn--sm btn--ghost" href={api.documentFileUrl(d.id, true)}>다운로드</a>
                 <Button size="sm" variant="danger" onClick={() => setConfirmDel(d)}>삭제</Button>
               </div>
@@ -173,7 +224,7 @@ export function DocumentsPage() {
         </div>
       )}
 
-      {viewing && <DocumentViewer doc={viewing} onClose={() => { setViewing(null); void load(q, category, sort); }} />}
+      {viewing && <DocumentViewer doc={viewing} onClose={() => { setViewing(null); void load(q, category, sort, folderSel); }} />}
 
       {confirmDel && (
         <Modal title="자료 삭제" onClose={() => setConfirmDel(null)}>
@@ -184,6 +235,54 @@ export function DocumentsPage() {
           </div>
         </Modal>
       )}
+
+      {moving && (
+        <Modal title="폴더로 이동" onClose={() => setMoving(null)}>
+          <p style={{ marginBottom: 'var(--sp-4)', wordBreak: 'break-all' }}><strong>{moving.originalName}</strong> 을(를) 이동할 폴더를 선택하세요.</p>
+          <div className="stack">
+            <Button variant={moving.folderId === null ? 'primary' : 'default'} onClick={() => void doMove(moving, null)}>미분류</Button>
+            {folders.map((f) => (
+              <Button key={f.id} variant={moving.folderId === f.id ? 'primary' : 'default'} onClick={() => void doMove(moving, f.id)}>📁 {f.name}</Button>
+            ))}
+            {folders.length === 0 && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>먼저 과목 폴더를 만들어주세요.</p>}
+          </div>
+        </Modal>
+      )}
+
+      {folderModal && (
+        <FolderModal mode={folderModal.mode} folder={folderModal.mode === 'rename' ? folderModal.folder : undefined}
+          onClose={() => setFolderModal(null)}
+          onDone={async () => { setFolderModal(null); await loadFolders(); }} />
+      )}
     </>
+  );
+}
+
+function FolderModal({ mode, folder, onClose, onDone }: {
+  mode: 'create' | 'rename'; folder?: FolderDto; onClose: () => void; onDone: () => void;
+}) {
+  const toast = useToast();
+  const [name, setName] = useState(folder?.name ?? '');
+  const [saving, setSaving] = useState(false);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      if (mode === 'create') { await api.folderCreate(name.trim()); toast.success('폴더가 생성되었습니다.'); }
+      else if (folder) { await api.folderRename(folder.id, name.trim()); toast.success('폴더 이름을 변경했습니다.'); }
+      onDone();
+    } catch (e) { toast.error(e instanceof Error ? e.message : '처리 실패'); setSaving(false); }
+  }
+  return (
+    <Modal title={mode === 'create' ? '과목 폴더 만들기' : '폴더 이름 변경'} onClose={onClose}>
+      <form onSubmit={submit}>
+        <Input placeholder="예: 데이터베이스, 운영체제" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        <div className="row between" style={{ marginTop: 'var(--sp-4)' }}>
+          <Button variant="ghost" type="button" onClick={onClose}>취소</Button>
+          <Button variant="primary" type="submit" loading={saving}>{mode === 'create' ? '만들기' : '변경'}</Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

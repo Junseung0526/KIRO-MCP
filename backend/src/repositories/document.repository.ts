@@ -13,10 +13,13 @@ export const documentRepository = {
     return prisma.document.findUnique({ where: { id } });
   },
 
-  async list(opts: { q?: string; category?: string; sort?: SortKey }): Promise<Document[]> {
+  async list(opts: { q?: string; category?: string; sort?: SortKey; folderId?: string | null }): Promise<Document[]> {
     const where: Prisma.DocumentWhereInput = {};
     if (opts.q) where.originalName = { contains: opts.q, mode: 'insensitive' };
     if (opts.category && opts.category !== 'all') where.category = opts.category;
+    // folderId: undefined = all folders; null = uncategorized only; string = that folder.
+    if (opts.folderId === null) where.folderId = null;
+    else if (typeof opts.folderId === 'string') where.folderId = opts.folderId;
 
     const orderBy: Prisma.DocumentOrderByWithRelationInput =
       opts.sort === 'oldest' ? { uploadedAt: 'asc' }
@@ -26,6 +29,10 @@ export const documentRepository = {
       : { uploadedAt: 'desc' };
 
     return prisma.document.findMany({ where, orderBy });
+  },
+
+  move(id: string, folderId: string | null): Promise<Document> {
+    return prisma.document.update({ where: { id }, data: { folderId } });
   },
 
   recentlyViewed(limit = 5): Promise<Document[]> {

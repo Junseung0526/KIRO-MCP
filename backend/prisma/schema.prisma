@@ -72,16 +72,31 @@ model Document {
   mimeType       String    @map("mime_type")
   ext            String // normalized lowercase extension (pdf, docx, png, ...)
   category       String // pdf | image | presentation | spreadsheet | document | text
-  previewType    String    @map("preview_type") // pdf | image | text | markdown | unsupported
+  previewType    String    @map("preview_type") // pdf | image | text | markdown | pptx | unsupported
   sizeBytes      Int       @map("size_bytes")
   storagePath    String    @map("storage_path") // relative path within storage dir
   pageCount      Int?      @map("page_count")
   lastViewedAt   DateTime? @map("last_viewed_at")
   lastViewedPage Int?      @map("last_viewed_page") // page/slide/sheet index
+  folderId       String?   @map("folder_id")
+  folder         Folder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
   uploadedAt     DateTime  @default(now()) @map("uploaded_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
   @@index([uploadedAt])
   @@index([originalName])
+  @@index([folderId])
   @@map("documents")
+}
+
+// A subject/course folder to organize documents. Deleting a folder does NOT
+// delete its documents — they become uncategorized (folderId = null).
+model Folder {
+  id        String     @id @default(uuid())
+  name      String
+  documents Document[]
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  @@map("folders")
 }

@@ -23,6 +23,7 @@ export interface DocumentDto {
   pageCount: number | null;
   lastViewedAt: string | null;
   lastViewedPage: number | null;
+  folderId: string | null;
   uploadedAt: string;
   updatedAt: string;
 }
@@ -32,8 +33,8 @@ function toDto(d: Document): DocumentDto {
     id: d.id, originalName: d.originalName, ext: d.ext, mimeType: d.mimeType,
     category: d.category, previewType: d.previewType, sizeBytes: d.sizeBytes,
     pageCount: d.pageCount, lastViewedAt: d.lastViewedAt?.toISOString() ?? null,
-    lastViewedPage: d.lastViewedPage, uploadedAt: d.uploadedAt.toISOString(),
-    updatedAt: d.updatedAt.toISOString(),
+    lastViewedPage: d.lastViewedPage, folderId: d.folderId,
+    uploadedAt: d.uploadedAt.toISOString(), updatedAt: d.updatedAt.toISOString(),
   };
 }
 
@@ -67,8 +68,8 @@ export interface StorageUsage {
 }
 
 export const documentService = {
-  async list(q: string | undefined, category: string | undefined, sort: SortKey): Promise<DocumentDto[]> {
-    const docs = await documentRepository.list({ q, category, sort });
+  async list(q: string | undefined, category: string | undefined, sort: SortKey, folderId?: string | null): Promise<DocumentDto[]> {
+    const docs = await documentRepository.list({ q, category, sort, folderId });
     return docs.map(toDto);
   },
 
@@ -83,7 +84,7 @@ export const documentService = {
   },
 
   // Handle an uploaded temp file (multer disk storage): validate, store, persist.
-  async create(file: { originalname: string; path: string; size: number }): Promise<DocumentDto> {
+  async create(file: { originalname: string; path: string; size: number }, folderId?: string | null): Promise<DocumentDto> {
     const originalName = decodeFilename(file.originalname);
     const ext = normalizeExt(originalName);
     const spec = specForExt(ext);
@@ -123,9 +124,16 @@ export const documentService = {
       previewType: spec.preview,
       sizeBytes: file.size,
       storagePath: storedName,
+      ...(folderId ? { folder: { connect: { id: folderId } } } : {}),
     });
     await logger.info('document.upload', `uploaded ${spec.ext} (${file.size}B)`);
     return toDto(doc);
+  },
+
+  async move(id: string, folderId: string | null): Promise<DocumentDto> {
+    const d = await documentRepository.findById(id);
+    if (!d) throw new NotFoundError('document not found');
+    return toDto(await documentRepository.move(id, folderId));
   },
 
   async delete(id: string): Promise<void> {

@@ -28,4 +28,5 @@ documentRouter.post('/', upload.single('file'), asyncHandler(documentController.
 documentRouter.get('/:id', asyncHandler(documentController.get));
 documentRouter.get('/:id/file', asyncHandler(documentController.file));
 documentRouter.post('/:id/view', asyncHandler(documentController.recordView));
+documentRouter.patch('/:id/folder', asyncHandler(documentController.move));
 documentRouter.delete('/:id', asyncHandler(documentController.remove));

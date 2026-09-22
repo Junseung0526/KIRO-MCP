@@ -9,6 +9,7 @@ import { logsRouter } from './routes/logs.routes';
 import { settingsRouter } from './routes/settings.routes';
 import { notionRouter } from './routes/notion.routes';
 import { documentRouter } from './routes/document.routes';
+import { folderRouter } from './routes/folder.routes';
 
 export function createApp() {
   const app = express();
@@ -45,6 +46,7 @@ export function createApp() {
   app.use('/api/settings', settingsRouter);
   app.use('/api/notion', notionRouter);
   app.use('/api/documents', documentRouter);
+  app.use('/api/folders', folderRouter);
 
   // 404 fallback
   app.use((_req: Request, res: Response) => {
